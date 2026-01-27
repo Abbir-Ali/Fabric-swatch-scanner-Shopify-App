@@ -1,0 +1,927 @@
+<style>
+    :root {
+        --p-primary: #008060;
+        --p-bg: #f4f6f8;
+        --p-white: #ffffff;
+        --p-border: #dfe3e8;
+        --p-text: #202223;
+        --p-text-subdued: #6d7175;
+    }
+
+    #fabric-scanner-root {
+        background: var(--p-bg);
+        min-height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: var(--p-text);
+        padding-bottom: 50px;
+    }
+
+    .fb-header {
+        background: var(--p-white);
+        padding: 10px 20px;
+        display: none;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--p-border);
+    }
+
+    .fb-user-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .fb-badge {
+        background: #e3f2fd;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #1976d2;
+    }
+
+    .fb-logout-btn {
+        background: none;
+        border: none;
+        color: #d32f2f;
+        cursor: pointer;
+        padding: 5px;
+    }
+
+    .fb-tabs {
+        display: flex;
+        background: var(--p-white);
+        border-bottom: 1px solid var(--p-border);
+    }
+
+    .fb-tab-btn {
+        flex: 1;
+        padding: 15px;
+        border: none;
+        background: none;
+        font-weight: 600;
+        cursor: pointer;
+        color: var(--p-text-subdued);
+    }
+
+    .fb-tab-btn.active {
+        color: var(--p-primary);
+        border-bottom: 2px solid var(--p-primary);
+    }
+
+    .fb-pane {
+        display: none;
+        padding: 15px;
+    }
+
+    .fb-pane.active {
+        display: block;
+    }
+
+    /* Orders styling */
+    .fb-order-card {
+        background: #fff;
+        border: 1px solid #eee;
+        margin-bottom: 15px;
+        border-radius: 4px;
+    }
+
+    .fb-order-row {
+        display: flex;
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .fb-order-header {
+        padding: 12px;
+        background: #f9fafb;
+        font-weight: 700;
+        border-bottom: 1px solid #ddd;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+    }
+
+    .fb-order-items {
+        display: block;
+    }
+
+    .fb-chevron {
+        transition: transform 0.2s;
+        width: 20px;
+        height: 20px;
+    }
+
+    .fb-chevron.open {
+        transform: rotate(180deg);
+    }
+
+    /* Stock card styling */
+    .fb-stock-card {
+        background: #fff;
+        border: 1px solid var(--p-border);
+        margin-bottom: 12px;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .fb-stock-header {
+        padding: 10px 12px;
+        background: #f9fafb;
+        font-weight: 700;
+        border-bottom: 1px solid var(--p-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .fb-stock-body {
+        display: flex;
+        padding: 12px;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .fb-btn {
+        background: var(--p-primary);
+        color: #fff;
+        border: none;
+        padding: 10px 14px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+    .fb-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .fb-btn-secondary {
+        background: #2c3e50;
+    }
+
+    .fb-btn-success {
+        background: #27ae60;
+    }
+
+    .fb-input {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
+
+    #fb-loader {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.7);
+        z-index: 100000;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
+    }
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid var(--p-primary);
+        border-radius: 50%;
+        animation: fb-spin 1s linear infinite;
+    }
+
+    @keyframes fb-spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .fb-pagination-box {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 15px;
+        margin-top: 20px;
+    }
+
+    .btn-pagination {
+        background: #fff;
+        border: 1px solid var(--p-border);
+        padding: 8px 15px;
+        border-radius: 4px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    /* Scanner Enhancements */
+    #scanner-container {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        margin: 0 auto;
+        border: 2px solid #555;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #000;
+    }
+
+    #reader {
+        width: 100% !important;
+        border: none !important;
+    }
+
+    #reader video {
+        width: 100% !important;
+        height: auto !important;
+        object-fit: cover;
+    }
+
+    .scan-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 10;
+    }
+
+    .scan-line {
+        position: absolute;
+        width: 100%;
+        height: 2px;
+        background: #00ff00;
+        box-shadow: 0 0 15px #00ff00;
+        top: 0;
+        animation: fb-scanAnim 2s linear infinite;
+    }
+
+    @keyframes fb-scanAnim {
+        0% {
+            top: 0%;
+        }
+
+        50% {
+            top: 100%;
+        }
+
+        100% {
+            top: 0%;
+        }
+    }
+
+    .scan-corner {
+        position: absolute;
+        width: 30px;
+        height: 30px;
+        border: 4px solid #00ff00;
+    }
+
+    .corner-tl {
+        top: 10px;
+        left: 10px;
+        border-right: 0;
+        border-bottom: 0;
+    }
+
+    .corner-tr {
+        top: 10px;
+        right: 10px;
+        border-left: 0;
+        border-bottom: 0;
+    }
+
+    .corner-bl {
+        bottom: 10px;
+        left: 10px;
+        border-right: 0;
+        border-top: 0;
+    }
+
+    .corner-br {
+        bottom: 10px;
+        right: 10px;
+        border-left: 0;
+        border-top: 0;
+    }
+
+    .fb-auth-box {
+        max-width: 350px;
+        margin: 50px auto;
+        background: #fff;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        text-align: center;
+    }
+</style>
+
+<div id="fabric-scanner-root">
+    <div id="fb-loader">
+        <div class="spinner"></div>
+        <div style="margin-top:10px; font-weight:600; color:var(--p-primary)">Loading...</div>
+    </div>
+    <header class="fb-header" id="main-nav">
+        <div style="font-weight: 700;">SWATCH SCANNER</div>
+        <div class="fb-user-info">
+            <div class="fb-badge" id="user-display-name">Guest</div>
+            <button class="fb-logout-btn" id="logout-trigger">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M12 2v2H4v12h8v2H2V2h10zm7 8l-4 4v-3H9V9h6V6l4 4z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <div id="auth-section">
+        <div class="fb-auth-box">
+            <h2 style="margin-top: 0;">Sign In</h2>
+            <input type="text" id="staff-id" placeholder="Username / Email" class="fb-input">
+            <input type="password" id="staff-pass" placeholder="PIN" class="fb-input">
+            <button id="login-btn" class="fb-btn" style="width: 100%; margin-top: 10px;">Login</button>
+            <button id="clear-session-btn" class="fb-btn"
+                style="width: 100%; margin-top: 10px; background: #d32f2f; display: none;">Clear Old Session</button>
+            <div id="session-warning"
+                style="display: none; margin-top: 15px; padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 13px; color: #856404;">
+                ⚠️ You have an old session from a previous app. Click "Clear Old Session" to log in with new
+                credentials.
+            </div>
+        </div>
+    </div>
+
+    <div id="app-content" style="display:none;">
+        <div class="fb-tabs">
+            <button class="fb-tab-btn active" data-tab="stock-pane">Stock</button>
+            <button class="fb-tab-btn" data-tab="orders-pane">Orders</button>
+            <button class="fb-tab-btn" data-tab="history-pane">History</button>
+        </div>
+
+        <div id="stock-pane" class="fb-pane active">
+            <div style="margin-bottom: 15px;">
+                <select id="inv-sort-select" class="fb-input"
+                    style="margin:0; width: 100%; font-size: 14px; height: 38px; padding: 0 10px;">
+                    <option value="CREATED_AT:true">Newest first</option>
+                    <option value="CREATED_AT:false">Oldest first</option>
+                    <option value="TITLE:false">Alphabetical (A-Z)</option>
+                    <option value="TITLE:true">Alphabetical (Z-A)</option>
+                    <option value="INVENTORY_TOTAL:false">Stock (Low to High)</option>
+                    <option value="INVENTORY_TOTAL:true">Stock (High to Low)</option>
+                </select>
+            </div>
+            <div id="inventory-list"></div>
+            <div class="fb-pagination-box" id="stock-pagination" style="display:none;">
+                <button id="prev-inventory" class="btn-pagination">Prev</button>
+                <span id="page-label-inventory">Page 1</span>
+                <button id="next-inventory" class="btn-pagination">Next</button>
+            </div>
+        </div>
+
+        <div id="orders-pane" class="fb-pane">
+            <div id="order-container"></div>
+            <div class="fb-pagination-box" id="orders-pagination" style="display:none;">
+                <button id="prev-orders" class="btn-pagination">Prev</button>
+                <span id="page-label-orders">Page 1</span>
+                <button id="next-orders" class="btn-pagination">Next</button>
+            </div>
+        </div>
+
+        <div id="history-pane" class="fb-pane">
+            <div id="history-container"></div>
+            <div class="fb-pagination-box" id="history-pagination" style="display:none;">
+                <button id="prev-history" class="btn-pagination">Prev</button>
+                <span id="page-label-history">Page 1</span>
+                <button id="next-history" class="btn-pagination">Next</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="camera-modal"
+    style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:99999; flex-direction:column; align-items:center; justify-content:center;">
+    <div style="color:white; font-size:18px; font-weight:bold; margin-bottom:10px; text-align:center; padding: 0 20px;">
+        SCANNING: <span id="scan-target-name" style="color:#00ff00;">--</span>
+    </div>
+    <div id="scan-target-sku" style="color:#bdc3c7; font-size:14px; margin-bottom:15px;">SKU: --</div>
+    <div
+        style="background:#222; color:#fff; padding:10px 20px; border-radius:30px; margin-bottom:20px; font-weight:bold; font-size:16px;">
+        Scan on <span id="scan-target-bin" style="color:#f1c40f;">BIN #--</span>
+    </div>
+
+    <div id="scanner-container">
+        <div id="reader"></div>
+        <div class="scan-overlay">
+            <div class="scan-line"></div>
+            <div class="scan-corner corner-tl"></div>
+            <div class="scan-corner corner-tr"></div>
+            <div class="scan-corner corner-bl"></div>
+            <div class="scan-corner corner-br"></div>
+        </div>
+    </div>
+
+    <div style="margin-top:20px;">
+        <button id="scanner-cancel-btn" class="fb-btn"
+            style="background:#d32f2f; padding: 12px 30px; font-size: 16px;">CANCEL SCAN</button>
+    </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js" defer></script>
+
+<script>
+    (function () {
+        const STORAGE_KEY_VERIFIED = 'fb_verified_items_stable';
+        const STORAGE_KEY_PRINTED = 'fb_printed_labels_stable';
+        const PROXY_URL = '/apps/fabric-scanner/get';
+
+        let verifiedItems = new Set(), printedLabels = new Set(), inventoryData = [], ordersData = [], historyData = [];
+        let html5QrCode = null, currentUser = null, isScanning = false;
+
+        let invPage = 1, invHasPrev = false, invHasNext = false, invStart = null, invEnd = null;
+        let invSort = 'CREATED_AT', invReverse = true;
+        let ordPage = 1, ordHasPrev = false, ordHasNext = false, ordStart = null, ordEnd = null;
+        let histPage = 1, histHasPrev = false, histHasNext = false, histStart = null, histEnd = null;
+
+        const setLoader = (show) => document.getElementById('fb-loader').style.display = show ? 'flex' : 'none';
+
+        const loadState = () => {
+            try {
+                const v = localStorage.getItem(STORAGE_KEY_VERIFIED);
+                if (v) verifiedItems = new Set(JSON.parse(v));
+                const p = localStorage.getItem(STORAGE_KEY_PRINTED);
+                if (p) printedLabels = new Set(JSON.parse(p));
+            } catch (e) { console.error("Error loading state", e); }
+        };
+
+        const saveState = () => {
+            try {
+                localStorage.setItem(STORAGE_KEY_VERIFIED, JSON.stringify([...verifiedItems]));
+                localStorage.setItem(STORAGE_KEY_PRINTED, JSON.stringify([...printedLabels]));
+            } catch (e) { console.error("Error saving state", e); }
+        };
+
+        const getBin = (node) => {
+            if (!node || !node.metafields) return 'N/A';
+            const m = node.metafields.edges.find(x => x.node.key === 'bin_number');
+            return m ? m.node.value : 'N/A';
+        }
+
+        window.toggleOrder = (header) => {
+            const items = header.nextElementSibling;
+            const chevron = header.querySelector('.fb-chevron');
+            items.style.display = items.style.display === 'none' ? 'block' : 'none';
+            chevron.classList.toggle('open');
+        }
+
+        const showApp = () => {
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('main-nav').style.display = 'flex';
+            document.getElementById('app-content').style.display = 'block';
+            document.getElementById('user-display-name').innerText = currentUser.name;
+
+            // Restore last active tab or default to stock
+            const savedTab = localStorage.getItem('fb_active_tab') || 'stock-pane';
+            console.log(`[TAB RESTORE] Restoring tab: ${savedTab}`);
+            document.querySelectorAll('.fb-tab-btn, .fb-pane').forEach(el => el.classList.remove('active'));
+            document.querySelector(`[data-tab="${savedTab}"]`)?.classList.add('active');
+            document.getElementById(savedTab)?.classList.add('active');
+
+            // Load data for the restored tab
+            if (savedTab === 'stock-pane') loadInventory();
+            else if (savedTab === 'orders-pane') loadOrders();
+            else if (savedTab === 'history-pane') loadHistory();
+        }
+
+        const restoreSession = () => {
+            const saved = localStorage.getItem('fb_session_stable');
+            if (!saved) return;
+
+            try { currentUser = JSON.parse(saved); showApp(); } catch (e) { console.error('Session restore error:', e); localStorage.removeItem('fb_session_stable'); }
+        }
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function beep(ok) {
+            try { const o = audioCtx.createOscillator(); o.connect(audioCtx.destination); o.frequency.value = ok ? 800 : 200; o.start(); o.stop(audioCtx.currentTime + 0.1); } catch (e) { }
+        }
+        function vibrate(ok) { if (window.navigator && window.navigator.vibrate) { window.navigator.vibrate(ok ? 200 : [100, 50, 100]); } }
+
+        document.getElementById('login-btn').onclick = async () => {
+            const id = document.getElementById('staff-id').value, pin = document.getElementById('staff-pass').value;
+            if (!id || !pin) return;
+            setLoader(true);
+            try {
+                const r = await fetch(`${PROXY_URL}?type=auth&identifier=${encodeURIComponent(id)}&pin=${pin}`);
+                const j = await r.json();
+                if (j.data?.valid) {
+                    currentUser = j.data.staff;
+                    console.log('[LOGIN] Current user set to:', currentUser);
+                    localStorage.setItem('fb_session_stable', JSON.stringify(currentUser));
+                    showApp();
+                }
+                else alert("Invalid login");
+            } catch (e) { alert("Error connecting to server"); }
+            finally { setLoader(false); }
+        }
+
+        document.getElementById('logout-trigger').onclick = () => { localStorage.removeItem('fb_session_stable'); location.reload(); }
+
+        document.querySelectorAll('.fb-tab-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                const target = e.target.dataset.tab;
+                document.querySelectorAll('.fb-tab-btn, .fb-pane').forEach(el => el.classList.remove('active'));
+                e.target.classList.add('active');
+                document.getElementById(target).classList.add('active');
+
+                // Save active tab to localStorage
+                localStorage.setItem('fb_active_tab', target);
+
+                // Only fetch if data is empty, otherwise just render existing data
+                console.log(`[TAB SWITCH] Switching to: ${target}`);
+                if (target === 'stock-pane') {
+                    if (inventoryData.length > 0) {
+                        console.log(`[STOCK] Using cached data (${inventoryData.length} items, page ${invPage})`);
+                        renderInventory();
+                    } else {
+                        console.log('[STOCK] No cached data, fetching...');
+                        loadInventory();
+                    }
+                } else if (target === 'orders-pane') {
+                    if (ordersData.length > 0) {
+                        console.log(`[ORDERS] Using cached data (${ordersData.length} items, page ${ordPage})`);
+                        renderOrders();
+                    } else {
+                        console.log('[ORDERS] No cached data, fetching...');
+                        loadOrders();
+                    }
+                } else if (target === 'history-pane') {
+                    if (historyData.length > 0) {
+                        console.log(`[HISTORY] Using cached data (${historyData.length} items, page ${histPage})`);
+                        // Re-render history inline
+                        document.getElementById('history-container').innerHTML = historyData.map((e, idx) => {
+                            const hIdx = (histPage - 1) * 10 + idx + 1;
+                            return `<div class="fb-order-card" style="padding:15px;">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                    <div><b>${hIdx}. ORDER ${e.node.name}</b><br><small style="color:var(--p-primary)">Status: FULFILLED</small></div>
+                                    <div style="text-align:right;"><small>${new Date(e.node.updatedAt).toLocaleString()}</small></div>
+                                </div>
+                            </div>`;
+                        }).join('');
+                    } else {
+                        console.log('[HISTORY] No cached data, fetching...');
+                        loadHistory();
+                    }
+                }
+            }
+        });
+
+        document.getElementById('inv-sort-select').onchange = (e) => {
+            const [key, rev] = e.target.value.split(':');
+            invSort = key; invReverse = (rev === 'true');
+            invPage = 1; invStart = null; invEnd = null;
+            loadInventory();
+        };
+
+        const loadInventory = async (dir = 'next', isPagination = false) => {
+            console.log(`[STOCK FETCH] Direction: ${dir}, isPagination: ${isPagination}, Current page: ${invPage}`);
+            setLoader(true);
+            let cur = (dir === 'next') ? invEnd : invStart;
+            if (!cur) dir = 'next';
+            try {
+                const r = await fetch(`${PROXY_URL}?type=inventory&direction=${dir}${cur ? `&cursor=${cur}` : ''}&sortKey=${invSort}&reverse=${invReverse}`);
+                const j = await r.json();
+                inventoryData = j.data.edges;
+                console.log(`[STOCK FETCH] Received ${inventoryData.length} items`);
+                const pi = j.data.pageInfo;
+                // Only update page counter when explicitly paginating, not on tab switches
+                if (isPagination && cur) {
+                    if (dir === 'next') invPage++;
+                    else if (invPage > 1) invPage--;
+                    console.log(`[STOCK FETCH] Page updated to: ${invPage}`);
+                }
+                invHasNext = pi.hasNextPage; invHasPrev = pi.hasPreviousPage;
+                invStart = pi.startCursor; invEnd = pi.endCursor;
+                document.getElementById('prev-inventory').disabled = !invHasPrev;
+                document.getElementById('next-inventory').disabled = !invHasNext;
+                document.getElementById('page-label-inventory').innerText = `Page ${invPage}`;
+                document.getElementById('stock-pagination').style.display = (invHasNext || invHasPrev) ? 'flex' : 'none';
+                renderInventory();
+            } finally { setLoader(false); }
+        }
+
+        document.getElementById('prev-inventory').onclick = () => loadInventory('prev', true);
+        document.getElementById('next-inventory').onclick = () => loadInventory('next', true);
+
+        function renderInventory() {
+            console.log(`[STOCK RENDER] Rendering ${inventoryData.length} items for page ${invPage}`);
+            const container = document.getElementById('inventory-list');
+            container.innerHTML = inventoryData.map((e, idx) => {
+                const p = e.node, v = p.variants.edges[0].node;
+                const bin = getBin(p);
+                const displayNumber = (invPage - 1) * 10 + idx + 1;
+                return `<div class="fb-stock-card">
+                    <div class="fb-stock-header"><span>#${displayNumber} | BIN: ${bin}</span><button class="fb-badge" style="border:none; cursor:pointer;" onclick="printTag('${p.title.replace(/'/g, "\\'")}', '${v.barcode}', '${bin}', '${p.featuredImage?.url}')">Print Label</button></div>
+                    <div class="fb-stock-body">
+                        <img src="${p.featuredImage?.url}" width="50" height="50" style="border-radius:4px; object-fit:cover;">
+                        <div style="flex:1; overflow:hidden;">
+                            <div style="font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${p.title}</div>
+                            <div style="font-size:12px; color:var(--p-text-subdued)">SKU: ${v.sku || 'N/A'}</div>
+                            <div style="font-size:12px; color:var(--p-primary); font-weight:600;">Stock: ${p.totalInventory}</div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        const loadOrders = async (dir = 'next', isPagination = false) => {
+            console.log(`[ORDERS FETCH] Direction: ${dir}, isPagination: ${isPagination}, Current page: ${ordPage}`);
+            setLoader(true);
+            let cur = (dir === 'next') ? ordEnd : ordStart;
+            if (!cur) dir = 'next';
+            try {
+                const r = await fetch(`${PROXY_URL}?type=orders&direction=${dir}${cur ? `&cursor=${cur}` : ''}`);
+                const j = await r.json();
+                ordersData = j.data.edges;
+                console.log(`[ORDERS FETCH] Received ${ordersData.length} items`);
+                const pi = j.data.pageInfo;
+                if (isPagination && cur) {
+                    if (dir === 'next') ordPage++;
+                    else if (ordPage > 1) ordPage--;
+                    console.log(`[ORDERS FETCH] Page updated to: ${ordPage}`);
+                }
+                ordHasNext = pi.hasNextPage; ordHasPrev = pi.hasPreviousPage;
+                ordStart = pi.startCursor; ordEnd = pi.endCursor;
+                document.getElementById('prev-orders').disabled = !ordHasPrev;
+                document.getElementById('next-orders').disabled = !ordHasNext;
+                document.getElementById('page-label-orders').innerText = `Page ${ordPage}`;
+                document.getElementById('orders-pagination').style.display = (ordHasNext || ordHasPrev) ? 'flex' : 'none';
+                renderOrders();
+            } finally { setLoader(false); }
+        }
+
+        document.getElementById('prev-orders').onclick = () => loadOrders('prev', true);
+        document.getElementById('next-orders').onclick = () => loadOrders('next', true);
+
+        function renderOrders() {
+            console.log(`[ORDERS RENDER] Rendering ${ordersData.length} items for page ${ordPage}`);
+            const container = document.getElementById('order-container');
+            container.innerHTML = ordersData.map((e, idx) => {
+                const o = e.node, fabrics = o.lineItems.edges.filter(x => x.node.variant?.product?.productType?.toLowerCase() === 'swatch item');
+                if (fabrics.length === 0) return '';
+                const allVerified = fabrics.every(x => verifiedItems.has(x.node.id));
+                const labelPrinted = printedLabels.has(o.id);
+                const orderRowIdx = (ordPage - 1) * 10 + idx + 1;
+
+                return `<div class="fb-order-card">
+                    <div class="fb-order-header" onclick="toggleOrder(this)">
+                        <span>${orderRowIdx}. ORDER ${o.name}</span>
+                        <svg class="fb-chevron open" width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5H5z"/></svg>
+                    </div>
+                    <div class="fb-order-items">
+                        ${fabrics.map(fx => {
+                    const bin = getBin(fx.node.variant?.product);
+                    const done = verifiedItems.has(fx.node.id);
+                    const sku = fx.node.variant?.sku || fx.node.variant?.product?.sku || 'N/A';
+                    return `<div class="fb-order-row" ${done ? 'style="background:#f1f8f5"' : ''}>
+                        <img src="${fx.node.variant?.product?.featuredImage?.url}" width="40">
+                        <div style="flex:1; overflow:hidden;">
+                            <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${fx.node.title}</div>
+                            <small>BIN: ${bin} | SKU: ${sku}</small>
+                        </div>
+                        <div>
+                            ${done ? '<div style="background:#27ae60; color:#fff; padding:4px 10px; border-radius:15px; font-size:12px; font-weight:700;">Verified ✓</div>' : `<button class="fb-btn" onclick="startScan('${fx.node.id}', '${fx.node.variant?.barcode}', '${fx.node.title.replace(/'/g, "\\'")}', '${bin}', '${sku}')">Scan</button>`}
+                        </div>
+                    </div>`;
+                }).join('')}
+                        ${allVerified ? `
+                            <div style="padding:15px; text-align:center; background:#f9fafb; border-top: 1px solid #eee;">
+                                ${!labelPrinted ?
+                            `<button class="fb-btn fb-btn-secondary" style="width:100%; height:45px; font-size:15px;" onclick="printShippingLabel('${o.id}', '${o.name}', '${(o.shippingAddress?.name || "").replace(/'/g, "\\'")}', '${(o.shippingAddress?.address1 || "").replace(/'/g, "\\'")}, ${(o.shippingAddress?.city || "").replace(/'/g, "\\'")}')">Generate & Print Shipping Label</button>` :
+                            `<button class="fb-btn fb-btn-success" style="width:100%; height:45px; font-size:15px;" onclick="fulfillNow('${o.id}')">Fulfill Order ${o.name}</button>`
+                        }
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        window.printShippingLabel = async (id, name, customer, address) => {
+            setLoader(true);
+            var win = window.open('', '_blank', 'width=600,height=800');
+            var s = '<script', se = '</' + 'script>';
+            var html = `<html><head><title>Shipping Label - ${name}</title>
+                <style>
+                    body { font-family: sans-serif; padding: 40px; margin: 0; }
+                    .label-box { border: 3px solid #000; padding: 20px; text-align: left; }
+                    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+                    .from { font-size: 14px; margin-bottom: 30px; }
+                    .to { font-size: 24px; font-weight: bold; margin-left: 40px; margin-bottom: 50px; }
+                    .barcode { text-align: center; margin-top: 40px; }
+                    .order-info { font-weight: bold; font-size: 20px; margin-top: 20px; }
+                </style>
+            </head><body>
+                <div class="label-box">
+                    <div class="header">
+                        <div style="font-weight: 900; font-size: 30px;">PRIORITY MAIL</div>
+                        <div style="text-align: right;"><b>${name}</b><br>Swatch Order</div>
+                    </div>
+                    <div class="from">
+                        <b>FROM:</b><br>
+                        Abbir Fabrics Warehouse<br>
+                        123 Fabric Lane<br>
+                        Textile City, TX 75001
+                    </div>
+                    <div class="to">
+                        <b>TO:</b><br>
+                        ${customer || 'Customer'}<br>
+                        ${address || 'Address Not Available'}
+                    </div>
+                    <div class="order-info">
+                        ORDER: ${name}
+                    </div>
+                    <div class="barcode">
+                        <div style="font-size: 12px; margin-bottom: 5px;">(01) 0 0012345 67890 5</div>
+                        <div style="background: #000; height: 100px; width: 100%;"></div>
+                        <div style="font-size: 14px; margin-top: 5px;">420 75001 9205 5102 0001 2345 67</div>
+                    </div>
+                </div>
+                ${s}>window.onload = function() { setTimeout(function() { window.print(); }, 500); };${se}
+            </body></html>`;
+            win.document.open(); win.document.write(html); win.document.close();
+            setTimeout(() => { setLoader(false); printedLabels.add(id); saveState(); renderOrders(); }, 1000);
+        }
+
+        const loadHistory = async (dir = 'next', isPagination = false) => {
+            console.log(`[HISTORY FETCH] Direction: ${dir}, isPagination: ${isPagination}, Current page: ${histPage}`);
+            setLoader(true);
+            let cur = (dir === 'next') ? histEnd : histStart;
+            if (!cur) dir = 'next';
+            try {
+                const r = await fetch(`${PROXY_URL}?type=fulfilled&direction=${dir}${cur ? `&cursor=${cur}` : ''}`);
+                const j = await r.json();
+                historyData = j.data.edges;
+                console.log(`[HISTORY FETCH] Received ${historyData.length} items`);
+                const pi = j.data.pageInfo;
+                if (isPagination && cur) {
+                    if (dir === 'next') histPage++;
+                    else if (histPage > 1) histPage--;
+                    console.log(`[HISTORY FETCH] Page updated to: ${histPage}`);
+                }
+                histHasNext = pi.hasNextPage; histHasPrev = pi.hasPreviousPage;
+                histStart = pi.startCursor; histEnd = pi.endCursor;
+                document.getElementById('prev-history').disabled = !histHasPrev;
+                document.getElementById('next-history').disabled = !histHasNext;
+                document.getElementById('page-label-history').innerText = `Page ${histPage}`;
+                document.getElementById('history-pagination').style.display = (histHasNext || histHasPrev) ? 'flex' : 'none';
+
+                console.log(`[HISTORY RENDER] Rendering ${historyData.length} items for page ${histPage}`);
+                document.getElementById('history-container').innerHTML = historyData.map((e, idx) => {
+                    const hIdx = (histPage - 1) * 10 + idx + 1;
+                    return `<div class="fb-order-card" style="padding:15px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div><b>${hIdx}. ORDER ${e.node.name}</b><br><small style="color:var(--p-primary)">Status: FULFILLED</small></div>
+                            <div style="text-align:right;"><small>${new Date(e.node.updatedAt).toLocaleString()}</small></div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } finally { setLoader(false); }
+        }
+
+        document.getElementById('prev-history').onclick = () => loadHistory('prev', true);
+        document.getElementById('next-history').onclick = () => loadHistory('next', true);
+
+        window.startScan = (id, exp, title, bin, sku) => {
+            if (isScanning) return;
+            isScanning = true;
+            document.getElementById('camera-modal').style.display = 'flex';
+            document.getElementById('scan-target-name').innerText = title;
+            document.getElementById('scan-target-sku').innerText = `SKU: ${sku}`;
+            document.getElementById('scan-target-bin').innerText = `BIN #${bin}`;
+
+            setTimeout(() => {
+                if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 20, qrbox: { width: 300, height: 150 }, aspectRatio: 1.0 },
+                    async (decodedText) => {
+                        if (isScanning) {
+                            if (decodedText.trim() === exp.trim()) {
+                                isScanning = false;
+                                beep(true); vibrate(true);
+                                verifiedItems.add(id);
+                                saveState();
+                                await closeScanner();
+                                renderOrders();
+                            } else {
+                                isScanning = false;
+                                beep(false); vibrate(false);
+                                // Close scanner first, then show alert
+                                await closeScanner();
+                                alert(`WRONG ITEM!\nYou should go to BIN #${bin}\n\nRequired: ${exp}\nScanned: ${decodedText}\n\nClick OK to scan again.`);
+                                // Restart scanning after user dismisses alert
+                                startScan(id, exp, title, bin, sku);
+                            }
+                        }
+                    },
+                    () => { }
+                ).catch(err => { console.error(err); alert("Camera failed."); closeScanner(); });
+            }, 300);
+        }
+
+        window.closeScanner = async () => {
+            isScanning = false;
+            if (html5QrCode) {
+                try { await html5QrCode.stop(); } catch (e) { }
+                html5QrCode = null;
+                const readerDiv = document.getElementById('reader');
+                if (readerDiv) readerDiv.innerHTML = '';
+            }
+            document.getElementById('camera-modal').style.display = 'none';
+            return true;
+        }
+
+        document.getElementById('scanner-cancel-btn').onclick = closeScanner;
+
+        window.fulfillNow = async (id) => {
+            setLoader(true);
+            try {
+                const r = await fetch(PROXY_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId: id, staffData: currentUser })
+                });
+                const res = await r.json();
+                if (res.success) {
+                    alert("Order Fulfilled Successfully! Moving to History.");
+                    printedLabels.delete(id);
+                    const orderNode = ordersData.find(e => e.node.id === id)?.node;
+                    if (orderNode) {
+                        orderNode.lineItems.edges.forEach(edge => { verifiedItems.delete(edge.node.id); });
+                    }
+                    saveState();
+                    loadOrders();
+                } else alert("Fulfillment Error: " + (res.error || "Unknown error"));
+            } finally { setLoader(false); }
+        }
+
+        window.printTag = function (title, code, bin, img) {
+            var win = window.open('', '_blank', 'width=600,height=800');
+            var s = '<script', se = '</' + 'script>';
+            var html = `<html><head><title>Print Label</title>
+                ${s} src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js">${se}
+                <style>body{text-align:center;padding:40px;margin:0}img{width:300px;border-radius:12px;margin-bottom:15px}h1{font-size:36px;margin:10px 0}.bin{background:#000;color:#fff;font-size:50px;padding:15px;border-radius:8px;margin:20px 0}</style>
+                </head><body>
+                <img src="${img}" onerror="this.style.display='none'">
+                <h1>${title}</h1>
+                <div class="bin">BIN: ${bin}</div>
+                <div style="margin-top:20px;"><svg id="barcode"></svg></div>
+                ${s}>setTimeout(function(){if(window.JsBarcode){JsBarcode("#barcode","${code}",{width:4,height:120,displayValue:true,fontSize:24});setTimeout(function(){window.print()},300)}},500)${se}
+                </body></html>`;
+            win.document.open(); win.document.write(html); win.document.close();
+        };
+
+        // Check for old session and show warning
+        const checkOldSession = () => {
+            const saved = localStorage.getItem('fb_session_stable');
+            if (saved) {
+                document.getElementById('clear-session-btn').style.display = 'block';
+                document.getElementById('session-warning').style.display = 'block';
+            }
+        };
+
+        document.getElementById('clear-session-btn').onclick = () => {
+            if (confirm('This will clear your old session. You will need to log in again with new credentials. Continue?')) {
+                localStorage.removeItem('fb_session_stable');
+                localStorage.removeItem(STORAGE_KEY_VERIFIED);
+                localStorage.removeItem(STORAGE_KEY_PRINTED);
+                alert('Session cleared! Please log in with your new credentials.');
+                location.reload();
+            }
+        };
+
+        checkOldSession();
+        loadState();
+        restoreSession();
+    })();
+</script>
+{% schema %}
+{
+"name": "Fabric Scanner",
+"target": "section",
+"settings": []
+}
+{% endschema %}

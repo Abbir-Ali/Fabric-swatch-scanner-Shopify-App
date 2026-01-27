@@ -35,9 +35,9 @@ This plan outlines the steps to recreate the "Fabric-scanner-system" with specif
 - N/A (Manual verification on Shopify store).
 
 ### Manual Verification
-- [ ] Verify app installation and scope approval.
-- [ ] Test Admin/Staff login flow via proxy.
-- [ ] Verify inventory list displays only "Swatch Item" product types.
-- [ ] Verify order list displays only "swatch-only" tagged orders.
+- [x] Verify app installation and scope approval.
+- [x] Test Admin/Staff login flow via proxy.
+- [x] Verify inventory list displays only "Swatch Item" product types.
+- [x] Verify order list displays only "swatch-only" tagged orders.
 - [ ] Test barcode scanning and fulfillment flow.
 - [ ] Check `ScanLog` entries after fulfillment.
