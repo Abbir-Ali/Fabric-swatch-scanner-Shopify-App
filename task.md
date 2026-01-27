@@ -1,0 +1,23 @@
+# Task: Rebuild Fabric-scanner-system
+
+- [ ] Project Initialization [/]
+    - [ ] Initialize Shopify App structure
+    - [ ] Configure `shopify.app.toml` with required scopes
+    - [ ] Set up App Proxy settings
+- [ ] Database Setup
+    - [ ] Define Prisma schema (`ScanLog`, `AppSettings`, `Staff`)
+    - [ ] Initialize database
+- [ ] Backend Implementation
+    - [ ] Implement GraphQL queries (Inventory, Orders)
+    - [ ] Create API Proxy handler (`api.proxy.$.jsx`)
+    - [ ] Implement Authentication logic (Admin/Staff PIN)
+    - [ ] Implement Fulfillment logic
+- [ ] Frontend Development (Theme App Extension)
+    - [ ] Create Theme App Extension structure
+    - [ ] Implement `scanner.liquid` with UI components
+    - [ ] Add scanning logic and modal
+    - [ ] Implement tabbed navigation (Available Fabrics, Unfulfilled Fabric Orders, History)
+- [ ] Verification & Testing
+    - [ ] Test authentication flow
+    - [ ] Test scanning and fulfillment
+    - [ ] Verify UI aesthetics and responsiveness
