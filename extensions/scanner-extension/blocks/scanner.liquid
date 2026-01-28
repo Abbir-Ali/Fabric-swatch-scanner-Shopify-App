@@ -524,7 +524,7 @@
             if (!id || !pin) return;
             setLoader(true);
             try {
-                const r = await fetch(`${PROXY_URL}?type=auth&identifier=${encodeURIComponent(id)}&pin=${pin}`);
+                const r = await fetch(`${PROXY_URL}?type=auth&identifier=${encodeURIComponent(id)}&pin=${pin}&_t=${Date.now()}`);
                 const j = await r.json();
                 if (j.data?.valid) {
                     currentUser = j.data.staff;
@@ -573,9 +573,14 @@
                         // Re-render history inline
                         document.getElementById('history-container').innerHTML = historyData.map((e, idx) => {
                             const hIdx = (histPage - 1) * 10 + idx + 1;
+                            const fulfiller = e.log ? (e.log.scannedBy || e.log.staffEmail) : 'Unknown';
                             return `<div class="fb-order-card" style="padding:15px;">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                                    <div><b>${hIdx}. ORDER ${e.node.name}</b><br><small style="color:var(--p-primary)">Status: FULFILLED</small></div>
+                                    <div>
+                                        <b>${hIdx}. ORDER ${e.node.name}</b><br>
+                                        <small style="color:var(--p-primary)">Status: FULFILLED</small><br>
+                                        <small style="color:var(--p-text-subdued)">Fulfilled by: <b>${fulfiller}</b></small>
+                                    </div>
                                     <div style="text-align:right;"><small>${new Date(e.node.updatedAt).toLocaleString()}</small></div>
                                 </div>
                             </div>`;
@@ -601,7 +606,7 @@
             let cur = (dir === 'next') ? invEnd : invStart;
             if (!cur) dir = 'next';
             try {
-                const r = await fetch(`${PROXY_URL}?type=inventory&direction=${dir}${cur ? `&cursor=${cur}` : ''}&sortKey=${invSort}&reverse=${invReverse}`);
+                const r = await fetch(`${PROXY_URL}?type=inventory&direction=${dir}${cur ? `&cursor=${cur}` : ''}&sortKey=${invSort}&reverse=${invReverse}&_t=${Date.now()}`);
                 const j = await r.json();
                 inventoryData = j.data.edges;
                 console.log(`[STOCK FETCH] Received ${inventoryData.length} items`);
@@ -628,6 +633,10 @@
         function renderInventory() {
             console.log(`[STOCK RENDER] Rendering ${inventoryData.length} items for page ${invPage}`);
             const container = document.getElementById('inventory-list');
+            if (inventoryData.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--p-text-subdued)">No matching inventory found.</div>';
+                return;
+            }
             container.innerHTML = inventoryData.map((e, idx) => {
                 const p = e.node, v = p.variants.edges[0].node;
                 const bin = getBin(p);
@@ -652,7 +661,7 @@
             let cur = (dir === 'next') ? ordEnd : ordStart;
             if (!cur) dir = 'next';
             try {
-                const r = await fetch(`${PROXY_URL}?type=orders&direction=${dir}${cur ? `&cursor=${cur}` : ''}`);
+                const r = await fetch(`${PROXY_URL}?type=orders&direction=${dir}${cur ? `&cursor=${cur}` : ''}&_t=${Date.now()}`);
                 const j = await r.json();
                 ordersData = j.data.edges;
                 console.log(`[ORDERS FETCH] Received ${ordersData.length} items`);
@@ -678,6 +687,10 @@
         function renderOrders() {
             console.log(`[ORDERS RENDER] Rendering ${ordersData.length} items for page ${ordPage}`);
             const container = document.getElementById('order-container');
+            if (ordersData.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--p-text-subdued)">No pending swatch orders found.</div>';
+                return;
+            }
             container.innerHTML = ordersData.map((e, idx) => {
                 const o = e.node, fabrics = o.lineItems.edges.filter(x => x.node.variant?.product?.productType?.toLowerCase() === 'swatch item');
                 if (fabrics.length === 0) return '';
@@ -771,7 +784,7 @@
             let cur = (dir === 'next') ? histEnd : histStart;
             if (!cur) dir = 'next';
             try {
-                const r = await fetch(`${PROXY_URL}?type=fulfilled&direction=${dir}${cur ? `&cursor=${cur}` : ''}`);
+                const r = await fetch(`${PROXY_URL}?type=fulfilled&direction=${dir}${cur ? `&cursor=${cur}` : ''}&_t=${Date.now()}`);
                 const j = await r.json();
                 historyData = j.data.edges;
                 console.log(`[HISTORY FETCH] Received ${historyData.length} items`);
@@ -789,15 +802,25 @@
                 document.getElementById('history-pagination').style.display = (histHasNext || histHasPrev) ? 'flex' : 'none';
 
                 console.log(`[HISTORY RENDER] Rendering ${historyData.length} items for page ${histPage}`);
-                document.getElementById('history-container').innerHTML = historyData.map((e, idx) => {
-                    const hIdx = (histPage - 1) * 10 + idx + 1;
-                    return `<div class="fb-order-card" style="padding:15px;">
+                const historyContainer = document.getElementById('history-container');
+                if (historyData.length === 0) {
+                    historyContainer.innerHTML = '<div style="text-align:center; padding:40px; color:var(--p-text-subdued)">No fulfillment history found.</div>';
+                } else {
+                    historyContainer.innerHTML = historyData.map((e, idx) => {
+                        const hIdx = (histPage - 1) * 10 + idx + 1;
+                        const fulfiller = e.log ? (e.log.scannedBy || e.log.staffEmail) : 'Unknown';
+                        return `<div class="fb-order-card" style="padding:15px;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <div><b>${hIdx}. ORDER ${e.node.name}</b><br><small style="color:var(--p-primary)">Status: FULFILLED</small></div>
+                            <div>
+                                <b>${hIdx}. ORDER ${e.node.name}</b><br>
+                                <small style="color:var(--p-primary)">Status: FULFILLED</small><br>
+                                <small style="color:var(--p-text-subdued)">Fulfilled by: <b>${fulfiller}</b></small>
+                            </div>
                             <div style="text-align:right;"><small>${new Date(e.node.updatedAt).toLocaleString()}</small></div>
                         </div>
                     </div>`;
-                }).join('');
+                    }).join('');
+                }
             } finally { setLoader(false); }
         }
 
@@ -873,9 +896,24 @@
                         orderNode.lineItems.edges.forEach(edge => { verifiedItems.delete(edge.node.id); });
                     }
                     saveState();
-                    loadOrders();
-                } else alert("Fulfillment Error: " + (res.error || "Unknown error"));
-            } finally { setLoader(false); }
+                    // Reset pagination but don't clear data yet to avoid flicker
+                    ordPage = 1; ordStart = null; ordEnd = null;
+
+                    // Keep loader on, wait for Shopify index to fully update, then refresh
+                    setLoader(true);
+                    setTimeout(() => {
+                        loadOrders();
+                    }, 2000);
+                } else {
+                    alert("Fulfillment Error: " + (res.error || "Unknown error"));
+                    setLoader(false);
+                }
+            } catch (e) {
+                console.error("Fulfillment Request Error:", e);
+                alert("Request failed. Please check connection.");
+                setLoader(false);
+            }
+            // We don't use finally { setLoader(false) } because loadOrders will handle it after the timeout
         }
 
         window.printTag = function (title, code, bin, img) {

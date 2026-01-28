@@ -51,14 +51,16 @@ export async function getDashboardStats(shop) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [scansToday, totalFulfilled] = await Promise.all([
+  const [scansToday, fulfilledGroups] = await Promise.all([
     db.scanLog.count({
       where: {
         shop,
+        status: { equals: "FULFILLED" },
         timestamp: { gte: today },
       },
     }),
-    db.scanLog.count({
+    db.scanLog.groupBy({
+      by: ['orderId'],
       where: {
         shop,
         status: "FULFILLED",
@@ -66,7 +68,10 @@ export async function getDashboardStats(shop) {
     })
   ]);
 
-  return { scansToday, totalFulfilled };
+  return { 
+    scansToday, 
+    totalFulfilled: fulfilledGroups.length 
+  };
 }
 
 export async function getLogForOrder(shop, orderId) {

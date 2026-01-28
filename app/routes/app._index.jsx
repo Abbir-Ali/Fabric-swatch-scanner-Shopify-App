@@ -1,8 +1,10 @@
-import { useLoaderData, useNavigate, useSearchParams } from "@remix-run/react";
+import { useLoaderData, useNavigate, useSearchParams, useRevalidator } from "@remix-run/react";
+import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
-import { getFabricOrders, getFulfilledFabricOrders } from "../services/order.server"; 
+import { getFabricOrders, getFulfilledFabricOrders, getFulfilledOrdersCount } from "../services/order.server"; 
 import { getDashboardStats, getLogForOrder } from "../models/logs.server";
 import BarcodeImage from "../components/BarcodeImage";
+import shopify from "../shopify.server";
 
 // Components
 import { Page, Layout, Card, BlockStack, Text, InlineGrid, Collapsible, Button, Badge, InlineStack, Thumbnail, Pagination, Icon } from "@shopify/polaris"; 
@@ -12,20 +14,28 @@ import { useState } from "react";
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
+
+  // Ensure webhooks are registered for this shop
+  try {
+     await shopify.registerWebhooks({ session });
+  } catch (e) {
+     console.error("Webhook Registration Error:", e);
+  }
   
   const pendingCursor = url.searchParams.get("pendingCursor");
   const pendingDir = url.searchParams.get("pendingDir") || "next";
   const fulfilledCursor = url.searchParams.get("fulfilledCursor");
   const fulfilledDir = url.searchParams.get("fulfilledDir") || "next";
 
-  const [pendingData, fulfilledData, stats] = await Promise.all([
+  const [pendingData, fulfilledData, stats, liveFulfilledCount] = await Promise.all([
     getFabricOrders(admin, pendingCursor, pendingDir),
     getFulfilledFabricOrders(admin, fulfilledCursor, fulfilledDir),
-    getDashboardStats(session.shop)
+    getDashboardStats(session.shop),
+    getFulfilledOrdersCount(admin)
   ]);
 
   const fulfilledWithLogs = await Promise.all(fulfilledData.edges.map(async (edge) => {
-    const log = await getLogForOrder(session.shop, edge.node.name);
+    const log = await getLogForOrder(session.shop, edge.node.id);
     return { ...edge, log };
   }));
   
@@ -34,7 +44,7 @@ export const loader = async ({ request }) => {
     pendingPageInfo: pendingData.pageInfo,
     fulfilledOrders: fulfilledWithLogs, 
     fulfilledPageInfo: fulfilledData.pageInfo,
-    stats 
+    stats: { ...stats, totalFulfilled: liveFulfilledCount } 
   };
 };
 
@@ -42,6 +52,19 @@ export default function Index() {
   const { swatchOrders, fulfilledOrders, stats, pendingPageInfo, fulfilledPageInfo } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const revalidator = useRevalidator();
+
+  // Auto-refresh the dashboard every 5 seconds to keep it sync with scanner activity
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Only revalidate if the tab is visible and the app is not currently performing another navigation
+      if (document.visibilityState === "visible" && revalidator.state === "idle") {
+        revalidator.revalidate();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [revalidator]);
 
   const handlePendingNext = () => {
       if(pendingPageInfo?.hasNextPage) {

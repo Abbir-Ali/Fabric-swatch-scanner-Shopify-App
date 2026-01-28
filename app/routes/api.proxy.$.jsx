@@ -57,7 +57,18 @@ export const loader = async ({ request }) => {
         const direction = url.searchParams.get("direction") || "next";
         
         const result = await getFulfilledFabricOrders(admin, cursor, direction);
-        return json({ data: result });
+        
+        // Enhance with log data
+        const { getLogForOrder } = await import("../models/logs.server");
+        const enhancedEdges = await Promise.all(result.edges.map(async (edge) => {
+          const log = await getLogForOrder(shop, edge.node.id);
+          return {
+            ...edge,
+            log: log ? { scannedBy: log.scannedBy, staffEmail: log.staffEmail } : null
+          };
+        }));
+
+        return json({ data: { ...result, edges: enhancedEdges } });
       }
 
       default:

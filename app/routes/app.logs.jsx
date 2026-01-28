@@ -52,7 +52,7 @@ export default function Logs() {
         </IndexTable.Cell>
         <IndexTable.Cell>{orderId || '-'}</IndexTable.Cell>
         <IndexTable.Cell>
-          <Badge tone={status === 'fulfilled' ? 'success' : 'info'}>{status}</Badge>
+          <Badge tone={status === 'FULFILLED' ? 'success' : 'info'}>{status}</Badge>
         </IndexTable.Cell>
         <IndexTable.Cell>
           <BlockStack gap="0">

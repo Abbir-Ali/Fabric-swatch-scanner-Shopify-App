@@ -165,3 +165,33 @@ export async function getFabricInventory(admin, cursor = null, { sortKey = "ID",
     return { edges: [], pageInfo: null };
   }
 }
+export async function getFulfilledOrdersCount(admin) {
+  try {
+    const response = await admin.graphql(
+      `#graphql
+        query getFulfilledCount {
+          orders(first: 1, query: "fulfillment_status:fulfilled AND tag:swatch-only") {
+             nodes { id }
+          }
+        }`
+    );
+    const resJson = await response.json();
+    // In Shopify GraphQL, the total count is available if you request it via connection, 
+    // but the simplest way here is to use the nodes count or a dedicated count query if allowed.
+    // However, the standard way is to use the query above.
+    // To get the ACTUAL total count efficiently:
+    const countResponse = await admin.graphql(
+      `#graphql
+      query getCount {
+        ordersCount(query: "fulfillment_status:fulfilled AND tag:swatch-only") {
+          count
+        }
+      }`
+    );
+    const countData = await countResponse.json();
+    return countData.data?.ordersCount?.count || 0;
+  } catch (error) {
+    console.error("Fulfilled Count Error:", error);
+    return 0;
+  }
+}
