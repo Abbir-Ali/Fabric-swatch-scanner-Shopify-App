@@ -45,6 +45,27 @@ export async function getFabricOrders(admin, cursor = null, direction = "next") 
                     }
                   }
                 }
+                fulfillmentOrders(first: 10) {
+                  edges {
+                    node {
+                      id
+                      status
+                      lineItems(first: 50) {
+                        edges {
+                          node {
+                            id
+                            totalQuantity
+                            remainingQuantity
+                            lineItem {
+                              id
+                              title
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -162,9 +183,89 @@ export async function getFabricInventory(admin, cursor = null, { sortKey = "ID",
     };
   } catch (error) {
     console.error("Inventory Service Error:", error);
+    return { edges: [], pageInfo: null, error: error.message };
+  }
+}
+export async function getPartiallyFulfilledOrders(admin, cursor = null, direction = "next") {
+  try {
+    const paginationArgs = direction === "prev" ? `last: 10, before: "${cursor}"` : `first: 10, after: ${cursor ? `"${cursor}"` : "null"}`;
+    const response = await admin.graphql(
+      `#graphql
+        query getPartiallyFulfilledOrders {
+          orders(${paginationArgs}, reverse: true, query: "fulfillment_status:partial AND tag:swatch-only") {
+            pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
+            edges {
+              node {
+                id
+                name
+                createdAt
+                updatedAt
+                displayFinancialStatus
+                totalPriceSet { shopMoney { amount currencyCode } }
+                lineItems(first: 50) {
+                  edges {
+                    node {
+                      id
+                      title
+                      quantity
+                      sku
+                      variant {
+                        barcode
+                        sku
+                        product {
+                          productType
+                          featuredImage { url }
+                          metafields(first: 10) {
+                            edges {
+                              node {
+                                namespace
+                                key
+                                value
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                fulfillmentOrders(first: 10) {
+                  edges {
+                    node {
+                      id
+                      status
+                      lineItems(first: 50) {
+                        edges {
+                          node {
+                            id
+                            totalQuantity
+                            remainingQuantity
+                            lineItem {
+                              id
+                              title
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`
+    );
+    const responseJson = await response.json();
+    return {
+      edges: responseJson.data?.orders?.edges || [],
+      pageInfo: responseJson.data?.orders?.pageInfo
+    };
+  } catch (error) {
+    console.error("Partially Fulfilled Service Error:", error);
     return { edges: [], pageInfo: null };
   }
 }
+
 export async function getFulfilledOrdersCount(admin) {
   try {
     const response = await admin.graphql(
@@ -193,5 +294,26 @@ export async function getFulfilledOrdersCount(admin) {
   } catch (error) {
     console.error("Fulfilled Count Error:", error);
     return 0;
+  }
+}
+
+export async function getShopLocations(admin) {
+  try {
+    const response = await admin.graphql(
+      `#graphql
+      query getLocations {
+        locations(first: 5) {
+          nodes {
+            id
+            name
+          }
+        }
+      }`
+    );
+    const resJson = await response.json();
+    return resJson.data?.locations?.nodes || [];
+  } catch (error) {
+    console.error("Get Locations Error:", error);
+    return [];
   }
 }

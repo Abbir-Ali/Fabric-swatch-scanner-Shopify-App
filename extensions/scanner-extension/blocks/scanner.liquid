@@ -692,30 +692,68 @@
                 return;
             }
             container.innerHTML = ordersData.map((e, idx) => {
-                const o = e.node, fabrics = o.lineItems.edges.filter(x => x.node.variant?.product?.productType?.toLowerCase() === 'swatch item');
-                if (fabrics.length === 0) return '';
+                const o = e.node;
+
+                // Get all swatch items
+                const allFabrics = o.lineItems.edges.filter(x => x.node.variant?.product?.productType?.toLowerCase() === 'swatch item');
+
+                // Determine which items are already fulfilled
+                const fulfilledLineItemIds = new Set();
+                if (o.fulfillmentOrders?.edges) {
+                    o.fulfillmentOrders.edges.forEach(foEdge => {
+                        const fo = foEdge.node;
+                        if (fo.lineItems?.edges) {
+                            fo.lineItems.edges.forEach(foLineEdge => {
+                                const foLineItem = foLineEdge.node;
+                                const lineItemId = foLineItem.lineItem.id;
+                                const remainingQty = foLineItem.remainingQuantity || 0;
+                                const totalQty = foLineItem.totalQuantity || 0;
+
+                                // If remaining quantity is 0, the item is fully fulfilled
+                                if (remainingQty === 0 && totalQty > 0) {
+                                    fulfilledLineItemIds.add(lineItemId);
+                                }
+                            });
+                        }
+                    });
+                }
+
+                // Only count unfulfilled items for button logic
+                const fabrics = allFabrics.filter(fx => !fulfilledLineItemIds.has(fx.node.id));
+
+                if (allFabrics.length === 0) return '';
                 const allVerified = fabrics.every(x => verifiedItems.has(x.node.id));
                 const labelPrinted = printedLabels.has(o.id);
                 const orderRowIdx = (ordPage - 1) * 10 + idx + 1;
 
-                return `<div class="fb-order-card">
-                    <div class="fb-order-header" onclick="toggleOrder(this)">
-                        <span>${orderRowIdx}. ORDER ${o.name}</span>
+                // Check if order is partially fulfilled
+                const isPartiallyFulfilled = fulfilledLineItemIds.size > 0 && fabrics.length > 0;
+
+                return `<div class="fb-order-card" ${isPartiallyFulfilled ? 'style="border: 2px solid #e67e22;"' : ''}>
+                    <div class="fb-order-header" onclick="toggleOrder(this)" ${isPartiallyFulfilled ? 'style="background: #fff3e0;"' : ''}>
+                        <span>${orderRowIdx}. ORDER ${o.name} ${isPartiallyFulfilled ? '<span style="background: #e67e22; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px;">PARTIALLY FULFILLED</span>' : ''}</span>
                         <svg class="fb-chevron open" width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M5 7l5 5 5-5H5z"/></svg>
                     </div>
                     <div class="fb-order-items">
-                        ${fabrics.map(fx => {
+                        ${allFabrics.map(fx => {
                     const bin = getBin(fx.node.variant?.product);
                     const done = verifiedItems.has(fx.node.id);
+                    const isFulfilled = fulfilledLineItemIds.has(fx.node.id);
                     const sku = fx.node.variant?.sku || fx.node.variant?.product?.sku || 'N/A';
-                    return `<div class="fb-order-row" ${done ? 'style="background:#f1f8f5"' : ''}>
+                    return `<div class="fb-order-row" ${done ? 'style="background:#f1f8f5"' : (isFulfilled ? 'style="background:#e8f5e9"' : '')}>
                         <img src="${fx.node.variant?.product?.featuredImage?.url}" width="40">
                         <div style="flex:1; overflow:hidden;">
                             <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${fx.node.title}</div>
                             <small>BIN: ${bin} | SKU: ${sku}</small>
                         </div>
                         <div>
-                            ${done ? '<div style="background:#27ae60; color:#fff; padding:4px 10px; border-radius:15px; font-size:12px; font-weight:700;">Verified ✓</div>' : `<button class="fb-btn" onclick="startScan('${fx.node.id}', '${fx.node.variant?.barcode}', '${fx.node.title.replace(/'/g, "\\'")}', '${bin}', '${sku}')">Scan</button>`}
+                            ${isFulfilled
+                            ? '<div style="background:#27ae60; color:#fff; padding:4px 10px; border-radius:15px; font-size:12px; font-weight:700;">Fulfilled ✓</div>'
+                            : (done
+                                ? '<div style="background:#27ae60; color:#fff; padding:4px 10px; border-radius:15px; font-size:12px; font-weight:700;">Verified ✓</div>'
+                                : `<button class="fb-btn" onclick="startScan('${fx.node.id}', '${fx.node.variant?.barcode}', '${fx.node.title.replace(/'/g, "\\'")}', '${bin}', '${sku}')">Scan</button>`
+                            )
+                        }
                         </div>
                     </div>`;
                 }).join('')}
@@ -726,7 +764,12 @@
                             `<button class="fb-btn fb-btn-success" style="width:100%; height:45px; font-size:15px;" onclick="fulfillNow('${o.id}')">Fulfill Order ${o.name}</button>`
                         }
                             </div>
-                        ` : ''}
+                        ` : (verifiedItems.size > 0 && fabrics.some(fx => verifiedItems.has(fx.node.id)) ? `
+                            <div style="padding:15px; text-align:center; background:#f9fafb; border-top: 1px solid #eee;">
+                                <button class="fb-btn" style="width:100%; height:45px; font-size:15px; background: #e67e22;" onclick="fulfillNow('${o.id}', true)">Partial Fulfillment (${fabrics.filter(fx => verifiedItems.has(fx.node.id)).length} items)</button>
+                                <div style="margin-top: 8px; font-size: 11px; color: #e67e22;">Only scanned items will be fulfilled.</div>
+                            </div>
+                        ` : '')}
                     </div>
                 </div>`;
             }).join('');
@@ -879,21 +922,56 @@
 
         document.getElementById('scanner-cancel-btn').onclick = closeScanner;
 
-        window.fulfillNow = async (id) => {
+        window.fulfillNow = async (id, isPartial = false) => {
+            if (isPartial && !confirm("Are you sure you want to perform a partial fulfillment? Only scanned items will be shipped.")) return;
+
             setLoader(true);
             try {
+                const orderNode = ordersData.find(e => e.node.id === id)?.node;
+                const verifiedItemsForOrder = [];
+
+                if (orderNode) {
+                    orderNode.lineItems.edges.forEach(edge => {
+                        if (verifiedItems.has(edge.node.id)) {
+                            verifiedItemsForOrder.push({
+                                id: edge.node.id,
+                                quantity: edge.node.quantity
+                            });
+                        }
+                    });
+                }
+
+                if (verifiedItemsForOrder.length === 0) {
+                    alert("No verified items to fulfill.");
+                    setLoader(false);
+                    return;
+                }
+
                 const r = await fetch(PROXY_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ orderId: id, staffData: currentUser })
+                    body: JSON.stringify({
+                        orderId: id,
+                        staffData: currentUser,
+                        verifiedItems: verifiedItemsForOrder
+                    })
                 });
                 const res = await r.json();
                 if (res.success) {
-                    alert("Order Fulfilled Successfully! Moving to History.");
-                    printedLabels.delete(id);
-                    const orderNode = ordersData.find(e => e.node.id === id)?.node;
+                    // Use detailed message from API if available, otherwise use generic message
+                    const successMessage = res.message || (res.partiallyFulfilled ? "Partial Fulfillment Successful!" : "Order Fulfilled Successfully! Moving to History.");
+                    alert(successMessage);
+
+                    if (!res.partiallyFulfilled) {
+                        printedLabels.delete(id);
+                    }
+
                     if (orderNode) {
-                        orderNode.lineItems.edges.forEach(edge => { verifiedItems.delete(edge.node.id); });
+                        orderNode.lineItems.edges.forEach(edge => {
+                            if (verifiedItems.has(edge.node.id)) {
+                                verifiedItems.delete(edge.node.id);
+                            }
+                        });
                     }
                     saveState();
                     // Reset pagination but don't clear data yet to avoid flicker

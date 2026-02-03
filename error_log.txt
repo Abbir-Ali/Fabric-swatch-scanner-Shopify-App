@@ -1,0 +1,23 @@
+ERROR: Field 'fulfillmentStatus' doesn't exist on type 'Order'
+Error: Field 'fulfillmentStatus' doesn't exist on type 'Order'
+    at throwFailedRequest (file:///E:/Fabric-Scanner-system/node_modules/lib/clients/common.ts:119:11)
+    at NewGraphqlClient.request (file:///E:/Fabric-Scanner-system/node_modules/lib/clients/admin/graphql/client.ts:133:7)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Object.query [as graphql] (file:///E:/Fabric-Scanner-system/node_modules/@shopify/src/server/clients/admin/graphql.ts:23:27)
+    at getFabricOrders (E:/Fabric-Scanner-system/app/services/order.server.js:13:22)
+    at async Promise.all (index 0)
+    at loader (E:/Fabric-Scanner-system/app/routes/app._index.jsx:28:67)
+    at Object.callRouteLoader (E:\Fabric-Scanner-system\node_modules\@remix-run\server-runtime\dist\data.js:59:16)
+    at E:\Fabric-Scanner-system\node_modules\@remix-run\router\router.ts:4936:19
+    at callLoaderOrAction (E:\Fabric-Scanner-system\node_modules\@remix-run\router\router.ts:5000:16)
+    at async Promise.all (index 0)
+    at defaultDataStrategy (E:\Fabric-Scanner-system\node_modules\@remix-run\router\router.ts:4809:17)
+    at callDataStrategyImpl (E:\Fabric-Scanner-system\node_modules\@remix-run\router\router.ts:4872:17)
+    at callDataStrategy (E:\Fabric-Scanner-system\node_modules\@remix-run\router\router.ts:4029:19)
+    at loadRouteData (E:\Fabric-Scanner-system\node_modules\@remix-run\router\router.ts:3974:19)
+    at queryImpl (E:\Fabric-Scanner-system\node_modules\@remix-run\router\router.ts:3733:20)
+    at Object.queryRoute (E:\Fabric-Scanner-system\node_modules\@remix-run\router\router.ts:3666:18)
+    at handleDataRequest (E:\Fabric-Scanner-system\node_modules\@remix-run\server-runtime\dist\server.js:235:20)
+    at requestHandler (E:\Fabric-Scanner-system\node_modules\@remix-run\server-runtime\dist\server.js:129:18)
+    at nodeHandler (E:\Fabric-Scanner-system\node_modules\@remix-run\dev\dist\vite\plugin.js:859:27)
+    at E:\Fabric-Scanner-system\node_modules\@remix-run\dev\dist\vite\plugin.js:862:15

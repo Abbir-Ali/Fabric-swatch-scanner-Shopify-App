@@ -11,15 +11,36 @@ export const action = async ({ request }) => {
 
     const orderGid = `gid://shopify/Order/${payload.id}`;
 
-    // Log the intent
-    if (payload.fulfillment_status === null || payload.fulfillment_status === "" || payload.fulfillment_status === "partial" || payload.fulfillment_status === "unfulfilled") {
+    // Handle different fulfillment statuses
+    if (payload.fulfillment_status === "partial") {
+        // Keep logs active for partially fulfilled orders - they're still in progress
+        console.log(`[WEBHOOK] Order ${orderGid} is PARTIALLY FULFILLED - keeping logs active.`);
+        
+        // Update log status to indicate partial fulfillment
+        const updateResult = await db.scanLog.updateMany({
+            where: {
+                shop,
+                orderId: orderGid,
+                status: "FULFILLED"
+            },
+            data: {
+                status: "PARTIALLY FULFILLED",
+                details: `Partial fulfillment detected via Shopify Sync. Some items shipped. [${new Date().toLocaleString()}]`
+            }
+        });
+        
+        console.log(`[WEBHOOK] Result: Updated ${updateResult.count} logs to PARTIALLY FULFILLED for ${orderGid}.`);
+    } else if (payload.fulfillment_status === null || payload.fulfillment_status === "" || payload.fulfillment_status === "unfulfilled") {
         console.log(`[WEBHOOK] Action: Order ${orderGid} is being marked as UNFULFILLED in logs.`);
         
         const updateResult = await db.scanLog.updateMany({
             where: {
                 shop,
                 orderId: orderGid,
-                status: "FULFILLED"
+                OR: [
+                    { status: "FULFILLED" },
+                    { status: "PARTIALLY FULFILLED" }
+                ]
             },
             data: {
                 status: "VOID",

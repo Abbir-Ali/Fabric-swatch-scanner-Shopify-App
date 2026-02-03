@@ -79,7 +79,10 @@ export async function getLogForOrder(shop, orderId) {
     where: { 
       shop, 
       orderId: { contains: orderId },
-      status: "FULFILLED" 
+      OR: [
+        { status: "FULFILLED" },
+        { status: "PARTIALLY FULFILLED" }
+      ]
     },
     orderBy: { timestamp: "desc" }
   });

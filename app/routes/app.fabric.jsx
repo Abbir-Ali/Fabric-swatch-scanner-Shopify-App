@@ -6,7 +6,7 @@ import {
 } from "@shopify/polaris";
 import { ArrowRightIcon, EditIcon, CheckIcon, XIcon } from "@shopify/polaris-icons";
 import { useState, useEffect, useCallback } from "react";
-import { getFabricInventory } from "../services/order.server";
+import { getFabricInventory, getShopLocations } from "../services/order.server";
 import BarcodeImage from "../components/BarcodeImage";
 
 export const loader = async ({ request }) => {
@@ -23,12 +23,15 @@ export const loader = async ({ request }) => {
   const { edges, pageInfo } = await getFabricInventory(admin, cursor, { query, sortKey, reverse, direction });
   
   const shopDomain = session.shop.replace(".myshopify.com", "");
+  const locations = await getShopLocations(admin);
+  const locationId = locations[0]?.id || null;
 
   return {
     products: edges,
     pageInfo,
     page,
     shopDomain,
+    locationId,
     initialQuery: query,
     initialSort: sortKey,
     initialReverse: reverse
@@ -39,49 +42,55 @@ export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   
-  const productId = formData.get("productId");
-  const binValue = formData.get("binValue");
+  const actionType = formData.get("actionType");
 
-  try {
-    const response = await admin.graphql(
-      `#graphql
-      mutation updateBin($ownerId: ID!, $value: String!) {
-        metafieldsSet(metafields: [
-          {
-            ownerId: $ownerId,
-            namespace: "custom",
-            key: "bin_number",
-            type: "single_line_text_field",
-            value: $value
+  if (actionType === "updateBin") {
+    const productId = formData.get("productId");
+    const binValue = formData.get("binValue");
+
+    try {
+      const response = await admin.graphql(
+        `#graphql
+        mutation updateBin($ownerId: ID!, $value: String!) {
+          metafieldsSet(metafields: [
+            {
+              ownerId: $ownerId,
+              namespace: "custom",
+              key: "bin_number",
+              type: "single_line_text_field",
+              value: $value
+            }
+          ]) {
+            metafields { id value }
+            userErrors { field message }
           }
-        ]) {
-          metafields { id value }
-          userErrors { field message }
+        }`,
+        {
+          variables: {
+            ownerId: productId,
+            value: binValue || ""
+          }
         }
-      }`,
-      {
-        variables: {
-          ownerId: productId,
-          value: binValue || ""
-        }
+      );
+      
+      const resData = await response.json();
+      const errors = resData.data?.metafieldsSet?.userErrors || [];
+      
+      if (errors.length > 0) {
+        return { success: false, error: errors[0].message };
       }
-    );
-    
-    const resData = await response.json();
-    const errors = resData.data?.metafieldsSet?.userErrors || [];
-    
-    if (errors.length > 0) {
-      return { success: false, error: errors[0].message };
-    }
 
-    return { success: true, updatedValue: binValue };
-  } catch (error) {
-    return { success: false, error: error.message };
+      return { success: true, field: "bin", updatedValue: binValue };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
+
+  return { success: false, error: "Invalid action type" };
 };
 
 export default function FabricInventory() {
-  const { products, pageInfo, page, shopDomain, initialSort, initialReverse } = useLoaderData();
+  const { products, pageInfo, page, shopDomain, locationId, initialSort, initialReverse } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const navigation = useNavigation();
@@ -132,6 +141,7 @@ export default function FabricInventory() {
     const variant = variants.edges[0]?.node;
     const sku = variant?.sku || "N/A";
     const barcode = variant?.barcode || "";
+    
     const binMeta = metaEdges?.edges.find(e => e.node.key === "bin_number")?.node;
     const adminUrl = `https://admin.shopify.com/store/${shopDomain}/products/${legacyResourceId}`;
     
@@ -245,7 +255,7 @@ function BinEditor({ productId, initialBin }) {
   }, [initialBin]);
 
   useEffect(() => {
-    if (fetcher.data?.success) {
+    if (fetcher.data?.success && fetcher.data?.field === "bin") {
       setBin(fetcher.data.updatedValue);
       setTempBin(fetcher.data.updatedValue);
       setIsEditing(false);
@@ -268,7 +278,7 @@ function BinEditor({ productId, initialBin }) {
                   disabled={isLoading}
               />
           </div>
-          <Button icon={CheckIcon} variant="primary" onClick={() => fetcher.submit({ productId, binValue: tempBin }, { method: "post" })} loading={isLoading} size="slim" />
+          <Button icon={CheckIcon} variant="primary" onClick={() => fetcher.submit({ actionType: "updateBin", productId, binValue: tempBin }, { method: "post" })} loading={isLoading} size="slim" />
           <Button icon={XIcon} onClick={() => setIsEditing(false)} disabled={isLoading} size="slim" />
       </InlineStack>
     );

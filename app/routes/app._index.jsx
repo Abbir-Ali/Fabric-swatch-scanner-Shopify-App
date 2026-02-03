@@ -1,7 +1,7 @@
 import { useLoaderData, useNavigate, useSearchParams, useRevalidator } from "@remix-run/react";
 import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
-import { getFabricOrders, getFulfilledFabricOrders, getFulfilledOrdersCount } from "../services/order.server"; 
+import { getFabricOrders, getFulfilledFabricOrders, getPartiallyFulfilledOrders, getFulfilledOrdersCount } from "../services/order.server"; 
 import { getDashboardStats, getLogForOrder } from "../models/logs.server";
 import BarcodeImage from "../components/BarcodeImage";
 import shopify from "../shopify.server";
@@ -24,15 +24,23 @@ export const loader = async ({ request }) => {
   
   const pendingCursor = url.searchParams.get("pendingCursor");
   const pendingDir = url.searchParams.get("pendingDir") || "next";
+  const partialCursor = url.searchParams.get("partialCursor");
+  const partialDir = url.searchParams.get("partialDir") || "next";
   const fulfilledCursor = url.searchParams.get("fulfilledCursor");
   const fulfilledDir = url.searchParams.get("fulfilledDir") || "next";
 
-  const [pendingData, fulfilledData, stats, liveFulfilledCount] = await Promise.all([
+  const [pendingData, partialData, fulfilledData, stats, liveFulfilledCount] = await Promise.all([
     getFabricOrders(admin, pendingCursor, pendingDir),
+    getPartiallyFulfilledOrders(admin, partialCursor, partialDir),
     getFulfilledFabricOrders(admin, fulfilledCursor, fulfilledDir),
     getDashboardStats(session.shop),
     getFulfilledOrdersCount(admin)
   ]);
+
+  const partialWithLogs = await Promise.all(partialData.edges.map(async (edge) => {
+    const log = await getLogForOrder(session.shop, edge.node.id);
+    return { ...edge, log };
+  }));
 
   const fulfilledWithLogs = await Promise.all(fulfilledData.edges.map(async (edge) => {
     const log = await getLogForOrder(session.shop, edge.node.id);
@@ -42,14 +50,16 @@ export const loader = async ({ request }) => {
   return { 
     swatchOrders: pendingData.edges, 
     pendingPageInfo: pendingData.pageInfo,
+    partialOrders: partialWithLogs,
+    partialPageInfo: partialData.pageInfo,
     fulfilledOrders: fulfilledWithLogs, 
     fulfilledPageInfo: fulfilledData.pageInfo,
-    stats: { ...stats, totalFulfilled: liveFulfilledCount } 
+    stats: { ...stats, totalFulfilled: liveFulfilledCount, totalPartial: partialData.edges.length } 
   };
 };
 
 export default function Index() {
-  const { swatchOrders, fulfilledOrders, stats, pendingPageInfo, fulfilledPageInfo } = useLoaderData();
+  const { swatchOrders, partialOrders, fulfilledOrders, stats, pendingPageInfo, partialPageInfo, fulfilledPageInfo } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const revalidator = useRevalidator();
@@ -122,11 +132,39 @@ export default function Index() {
       }
   };
 
+  const handlePartialNext = () => {
+    if(partialPageInfo?.hasNextPage) {
+      const newParams = new URLSearchParams(searchParams);
+      const currentPage = parseInt(searchParams.get("partialPage") || "1");
+      newParams.set("partialCursor", partialPageInfo.endCursor);
+      newParams.set("partialPage", (currentPage + 1).toString());
+      newParams.set("partialDir", "next");
+      navigate(`?${newParams.toString()}`);
+    }
+  };
+
+  const handlePartialPrev = () => {
+    if(partialPageInfo?.hasPreviousPage) {
+      const newParams = new URLSearchParams(searchParams);
+      const currentPage = parseInt(searchParams.get("partialPage") || "1");
+      newParams.set("partialCursor", partialPageInfo.startCursor);
+      newParams.set("partialPage", (currentPage - 1).toString());
+      newParams.set("partialDir", "prev");
+      navigate(`?${newParams.toString()}`);
+    } else {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("partialCursor");
+      newParams.delete("partialPage");
+      newParams.delete("partialDir");
+      navigate(`?${newParams.toString()}`);
+    }
+  };
+
   return (
     <Page title="Dashboard">
       <Layout>
         <Layout.Section>
-          <InlineGrid columns={3} gap="400">
+          <InlineGrid columns={4} gap="400">
             <Card>
               <BlockStack gap="200">
                 <Text variant="headingSm" as="h3">Total Scans Today</Text>
@@ -136,9 +174,16 @@ export default function Index() {
             </Card>
             <Card>
               <BlockStack gap="200">
-                <Text variant="headingSm" as="h3">Total Pending Orders</Text>
+                <Text variant="headingSm" as="h3">Pending Orders</Text>
                 <Text variant="heading2xl" as="p">{swatchOrders.length === 10 ? "10+" : swatchOrders.length}</Text>
-                <Text tone="subdued" variant="bodySm">Orders currently in queue</Text>
+                <Text tone="subdued" variant="bodySm">Orders awaiting fulfillment</Text>
+              </BlockStack>
+            </Card>
+            <Card>
+              <BlockStack gap="200">
+                <Text variant="headingSm" as="h3">Partially Fulfilled</Text>
+                <Text variant="heading2xl" as="p" tone="warning">{stats.totalPartial || 0}</Text>
+                <Text tone="subdued" variant="bodySm">Orders with items remaining</Text>
               </BlockStack>
             </Card>
             <Card>
@@ -178,6 +223,36 @@ export default function Index() {
         <Layout.Section>
           <Card>
             <BlockStack gap="400">
+              <Text variant="headingMd" as="h2">Partially Fulfilled Orders</Text>
+              {partialOrders.length === 0 ? (
+                 <Text tone="subdued">No partially fulfilled orders.</Text>
+              ) : (
+                <BlockStack gap="400">
+                  {partialOrders.map(({ node: order, log }, idx) => (
+                    <PartialOrderRow 
+                      key={order.id} 
+                      order={order} 
+                      log={log} 
+                      index={(parseInt(searchParams.get("partialPage") || "1") - 1) * 10 + idx + 1} 
+                    />
+                  ))}
+                  <Pagination
+                    hasPrevious={partialPageInfo?.hasPreviousPage}
+                    onPrevious={handlePartialPrev}
+                    hasNext={partialPageInfo?.hasNextPage}
+                    onNext={handlePartialNext}
+                    accessibilityLabel="Partial orders pagination"
+                  />
+                </BlockStack>
+              )}
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+
+
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400">
               <Text variant="headingMd" as="h2">Fulfilled History</Text>
               {fulfilledOrders.length === 0 ? (
                  <Text tone="subdued">No fulfilled orders found.</Text>
@@ -200,6 +275,124 @@ export default function Index() {
         </Layout.Section>
       </Layout>
     </Page>
+  );
+}
+
+function PartialOrderRow({ order, log, index }) {
+  const [open, setOpen] = useState(false);
+
+  const fabricItems = order.lineItems.edges.filter(
+    i => i.node.variant?.product?.productType?.toLowerCase() === "swatch item"
+  );
+
+  // Calculate fulfillment progress using fulfillmentOrders data
+  // lineItem.fulfillmentStatus might not be reliable, so we check fulfillmentOrders
+  const fulfilledLineItemIds = new Set();
+  const unfulfilledLineItemIds = new Set();
+  
+  // Check fulfillmentOrders to see which items are fulfilled
+  if (order.fulfillmentOrders?.edges) {
+    order.fulfillmentOrders.edges.forEach(foEdge => {
+      const fo = foEdge.node;
+      if (fo.lineItems?.edges) {
+        fo.lineItems.edges.forEach(foLineEdge => {
+          const foLineItem = foLineEdge.node;
+          const lineItemId = foLineItem.lineItem.id;
+          const remainingQty = foLineItem.remainingQuantity || 0;
+          const totalQty = foLineItem.totalQuantity || 0;
+          
+          // If remaining quantity is 0, the item is fully fulfilled
+          if (remainingQty === 0 && totalQty > 0) {
+            fulfilledLineItemIds.add(lineItemId);
+            // Remove from unfulfilled if it was there (due to split FOs)
+            unfulfilledLineItemIds.delete(lineItemId);
+          } else if (remainingQty > 0 && !fulfilledLineItemIds.has(lineItemId)) {
+            // Only add to unfulfilled if not already marked as fulfilled
+            unfulfilledLineItemIds.add(lineItemId);
+          }
+        });
+      }
+    });
+  }
+  
+  const fulfilledItems = fabricItems.filter(i => fulfilledLineItemIds.has(i.node.id));
+  const unfulfilledItems = fabricItems.filter(i => unfulfilledLineItemIds.has(i.node.id));
+  const progress = `${fulfilledItems.length}/${fabricItems.length}`;
+
+  if (fabricItems.length === 0) return null;
+
+  return (
+    <div style={{ border: '2px solid #ff9900', borderRadius: '8px', overflow: 'hidden' }}>
+      <div 
+        onClick={() => setOpen(!open)}
+        style={{ 
+          padding: '12px 16px', 
+          background: '#fff8e6', 
+          cursor: 'pointer',
+          display: 'flex', 
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <InlineStack gap="400">
+          <Text variant="bodyMd" fontWeight="bold" tone="subdued" as="span">{index}.</Text>
+          <Text variant="bodyMd" fontWeight="bold" as="span">{order.name}</Text>
+          <Badge tone="warning">PARTIALLY FULFILLED</Badge>
+          <Badge tone="info">{progress} items shipped</Badge>
+          <Text tone="subdued" as="span">{new Date(order.updatedAt || order.createdAt).toLocaleString()}</Text>
+        </InlineStack>
+
+        <InlineStack gap="400" blockAlign="center">
+           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Icon source={PersonIcon} tone="subdued" />
+              <Text variant="bodySm" tone="subdued">
+                {log?.scannedBy || log?.staffEmail || "Unknown"}
+              </Text>
+           </div>
+           <Button icon={open ? ChevronUpIcon : ChevronDownIcon} variant="plain" />
+        </InlineStack>
+      </div>
+
+      <Collapsible open={open} id={`collapse-${order.id}`}>
+        <div style={{ padding: '16px', background: '#fff' }}>
+          <BlockStack gap="400">
+             <Text variant="headingSm" as="h4">Fulfilled Items ({fulfilledItems.length})</Text>
+             {fulfilledItems.map(({ node: item }, idx) => (
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1fr 2fr', alignItems: 'center', gap: '20px', padding: '8px', background: '#f1f8f5', borderRadius: '4px' }}>
+                   <Thumbnail source={item.variant?.product?.featuredImage?.url || ""} alt={item.title} size="small" />
+                   <div>
+                      <Text variant="bodyMd" fontWeight="bold">{item.title}</Text>
+                      <Text variant="bodySm" tone="subdued">SKU: {item.sku || 'N/A'}</Text>
+                   </div>
+                   <div style={{ textAlign: 'center' }}>
+                      <Badge tone="success">✓ Shipped</Badge>
+                   </div>
+                   <div style={{ textAlign: 'right' }}>
+                      <BarcodeImage value={item.variant?.barcode} />
+                   </div>
+                </div>
+             ))}
+
+             <Text variant="headingSm" as="h4" tone="critical">Unfulfilled Items ({unfulfilledItems.length})</Text>
+             {unfulfilledItems.map(({ node: item }, idx) => (
+                <div key={idx} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1fr 2fr', alignItems: 'center', gap: '20px', padding: '8px', background: '#fff4f4', borderRadius: '4px' }}>
+                   <Thumbnail source={item.variant?.product?.featuredImage?.url || ""} alt={item.title} size="small" />
+                   <div>
+                      <Text variant="bodyMd" fontWeight="bold">{item.title}</Text>
+                      <Text variant="bodySm" tone="subdued">SKU: {item.sku || 'N/A'}</Text>
+                   </div>
+                   <div style={{ textAlign: 'center' }}>
+                      <Badge tone="attention">Pending</Badge>
+                   </div>
+                   <div style={{ textAlign: 'right' }}>
+                      <BarcodeImage value={item.variant?.barcode} />
+                   </div>
+                </div>
+             ))}
+          </BlockStack>
+        </div>
+      </Collapsible>
+    </div>
   );
 }
 
