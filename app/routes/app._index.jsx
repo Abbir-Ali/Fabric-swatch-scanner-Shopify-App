@@ -2,9 +2,7 @@ import { useLoaderData, useNavigate, useSearchParams, useRevalidator } from "@re
 import { useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import { getFabricOrders, getFulfilledFabricOrders, getPartiallyFulfilledOrders, getFulfilledOrdersCount } from "../services/order.server"; 
-import { getDashboardStats, getLogForOrder } from "../models/logs.server";
 import BarcodeImage from "../components/BarcodeImage";
-import shopify from "../shopify.server";
 
 // Components
 import { Page, Layout, Card, BlockStack, Text, InlineGrid, Collapsible, Button, Badge, InlineStack, Thumbnail, Pagination, Icon } from "@shopify/polaris"; 
@@ -13,6 +11,8 @@ import { useState } from "react";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
+  const { getDashboardStats, getLogsForOrder } = await import("../models/logs.server");
+  const { default: shopify } = await import("../shopify.server");
   const url = new URL(request.url);
 
   // Ensure webhooks are registered for this shop
@@ -38,17 +38,21 @@ export const loader = async ({ request }) => {
   ]);
 
   const partialWithLogs = await Promise.all(partialData.edges.map(async (edge) => {
-    const log = await getLogForOrder(session.shop, edge.node.id);
-    return { ...edge, log };
+    const logs = await getLogsForOrder(session.shop, edge.node.id);
+    return { ...edge, logs: logs || [] };
   }));
 
   const fulfilledWithLogs = await Promise.all(fulfilledData.edges.map(async (edge) => {
-    const log = await getLogForOrder(session.shop, edge.node.id);
-    return { ...edge, log };
+    const logs = await getLogsForOrder(session.shop, edge.node.id);
+    return { ...edge, logs: logs || [] };
   }));
   
+  // Filter out orders that are already in the partially fulfilled list to prevent duplicates on the dashboard
+  const partialIds = new Set(partialData.edges.map(e => e.node.id));
+  const pendingFiltered = pendingData.edges.filter(e => !partialIds.has(e.node.id));
+
   return { 
-    swatchOrders: pendingData.edges, 
+    swatchOrders: pendingFiltered, 
     pendingPageInfo: pendingData.pageInfo,
     partialOrders: partialWithLogs,
     partialPageInfo: partialData.pageInfo,
@@ -228,11 +232,11 @@ export default function Index() {
                  <Text tone="subdued">No partially fulfilled orders.</Text>
               ) : (
                 <BlockStack gap="400">
-                  {partialOrders.map(({ node: order, log }, idx) => (
+                  {partialOrders.map(({ node: order, logs }, idx) => (
                     <PartialOrderRow 
                       key={order.id} 
                       order={order} 
-                      log={log} 
+                      logs={logs} 
                       index={(parseInt(searchParams.get("partialPage") || "1") - 1) * 10 + idx + 1} 
                     />
                   ))}
@@ -259,7 +263,13 @@ export default function Index() {
               ) : (
                 <BlockStack gap="400">
                     {fulfilledOrders.map((edge, idx) => (
-                      <OrderRow key={edge.node.id} order={edge.node} status="fulfilled" log={edge.log} index={(parseInt(searchParams.get("fulfilledPage") || "1") - 1) * 10 + idx + 1} />
+                      <OrderRow 
+                        key={edge.node.id} 
+                        order={edge.node} 
+                        status="fulfilled" 
+                        logs={edge.logs} 
+                        index={(parseInt(searchParams.get("fulfilledPage") || "1") - 1) * 10 + idx + 1} 
+                      />
                     ))}
                     <Pagination
                       hasPrevious={fulfilledPageInfo?.hasPreviousPage}
@@ -278,7 +288,7 @@ export default function Index() {
   );
 }
 
-function PartialOrderRow({ order, log, index }) {
+function PartialOrderRow({ order, logs, index }) {
   const [open, setOpen] = useState(false);
 
   const fabricItems = order.lineItems.edges.filter(
@@ -319,6 +329,27 @@ function PartialOrderRow({ order, log, index }) {
   const unfulfilledItems = fabricItems.filter(i => unfulfilledLineItemIds.has(i.node.id));
   const progress = `${fulfilledItems.length}/${fabricItems.length}`;
 
+  // Helper to find which staff member scanned a specific item
+  const getStaffForItem = (lineItemId) => {
+    if (!logs || logs.length === 0) return null;
+    
+    // Look through logs for one that contains this item ID in its details metadata
+    const itemLog = logs.find(l => {
+      // Regex to match [ITEMS:id1,id2]
+      const match = l.details?.match(/\[ITEMS:(.*?)\]/);
+      if (match && match[1]) {
+        const itemIds = match[1].split(',');
+        return itemIds.includes(lineItemId);
+      }
+      return false;
+    });
+
+    return itemLog ? itemLog.scannedBy : null;
+  };
+
+  // Find the primary log (the most recent one) for the header summary
+  const primaryLog = logs?.[0];
+
   if (fabricItems.length === 0) return null;
 
   return (
@@ -346,7 +377,7 @@ function PartialOrderRow({ order, log, index }) {
            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <Icon source={PersonIcon} tone="subdued" />
               <Text variant="bodySm" tone="subdued">
-                {log?.scannedBy || log?.staffEmail || "Unknown"}
+                {primaryLog?.scannedBy || primaryLog?.staffEmail || "Unknown"}
               </Text>
            </div>
            <Button icon={open ? ChevronUpIcon : ChevronDownIcon} variant="plain" />
@@ -366,6 +397,11 @@ function PartialOrderRow({ order, log, index }) {
                    </div>
                    <div style={{ textAlign: 'center' }}>
                       <Badge tone="success">✓ Shipped</Badge>
+                      {getStaffForItem(item.id) && (
+                        <div style={{ marginTop: '4px' }}>
+                          <Text variant="bodyXs" tone="subdued">By: {getStaffForItem(item.id)}</Text>
+                        </div>
+                      )}
                    </div>
                    <div style={{ textAlign: 'right' }}>
                       <BarcodeImage value={item.variant?.barcode} />
@@ -396,7 +432,7 @@ function PartialOrderRow({ order, log, index }) {
   );
 }
 
-function OrderRow({ order, status, log, index }) {
+function OrderRow({ order, status, logs, index }) {
   const [open, setOpen] = useState(false);
 
   const fabricItems = order.lineItems.edges.filter(
@@ -404,6 +440,22 @@ function OrderRow({ order, status, log, index }) {
   );
 
   if (fabricItems.length === 0) return null;
+
+  // Helper to find which staff member scanned a specific item
+  const getStaffForItem = (lineItemId) => {
+    if (!logs || logs.length === 0) return null;
+    const itemLog = logs.find(l => {
+      const match = l.details?.match(/\[ITEMS:(.*?)\]/);
+      if (match && match[1]) {
+        const itemIds = match[1].split(',');
+        return itemIds.includes(lineItemId);
+      }
+      return false;
+    });
+    return itemLog ? itemLog.scannedBy : null;
+  };
+
+  const primaryLog = logs?.[0];
 
   return (
     <div style={{ border: '1px solid #dfe3e8', borderRadius: '8px', overflow: 'hidden' }}>
@@ -430,7 +482,7 @@ function OrderRow({ order, status, log, index }) {
              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <Icon source={PersonIcon} tone="subdued" />
                 <Text variant="bodySm" tone="subdued">
-                  {log?.scannedBy || log?.staffEmail || "Unknown"}
+                  {primaryLog?.scannedBy || primaryLog?.staffEmail || "Unknown"}
                 </Text>
              </div>
            )}
@@ -448,7 +500,14 @@ function OrderRow({ order, status, log, index }) {
                       <Text variant="bodyMd" fontWeight="bold">{item.title}</Text>
                       <Text variant="bodySm" tone="subdued">SKU: {item.sku || 'N/A'}</Text>
                    </div>
-                   <Text alignment="center" as="span">Qty: {item.quantity}</Text>
+                   <div style={{ textAlign: 'center' }}>
+                      <Text alignment="center" as="span">Qty: {item.quantity}</Text>
+                      {status === 'fulfilled' && getStaffForItem(item.id) && (
+                        <div style={{ marginTop: '4px' }}>
+                          <Text variant="bodyXs" tone="subdued">By: {getStaffForItem(item.id)}</Text>
+                        </div>
+                      )}
+                   </div>
                    <div style={{ textAlign: 'right' }}>
                       <BarcodeImage value={item.variant?.barcode} />
                    </div>

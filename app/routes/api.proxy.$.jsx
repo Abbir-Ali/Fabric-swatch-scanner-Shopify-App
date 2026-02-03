@@ -78,12 +78,18 @@ export const loader = async ({ request }) => {
         const result = await getPartiallyFulfilledOrders(admin, cursor, direction);
         
         // Enhance with log data
-        const { getLogForOrder } = await import("../models/logs.server");
+        const { getLogsForOrder } = await import("../models/logs.server");
         const enhancedEdges = await Promise.all(result.edges.map(async (edge) => {
-          const log = await getLogForOrder(shop, edge.node.id);
+          const logs = await getLogsForOrder(shop, edge.node.id);
           return {
             ...edge,
-            log: log ? { scannedBy: log.scannedBy, staffEmail: log.staffEmail, status: log.status } : null
+            logs: logs ? logs.map(l => ({ 
+              scannedBy: l.scannedBy, 
+              staffEmail: l.staffEmail, 
+              status: l.status,
+              details: l.details,
+              timestamp: l.timestamp 
+            })) : []
           };
         }));
 
@@ -253,12 +259,15 @@ export const action = async ({ request }) => {
       ? `${fulfillmentOrderLineItems.length} of ${foLineItems.length} items fulfilled` 
       : `All ${fulfillmentOrderLineItems.length} items fulfilled`;
     
+    // Store fulfilled item IDs in a metadata tag within details for per-item attribution
+    const itemIdsMeta = `[ITEMS:${verifiedItemIds.join(',')}]`;
+    
     await createScanLog(shop, {
       orderId,
       status: statusLabel,
       scannedBy: staffData.name,
       staffEmail: staffData.email,
-      details: `${statusLabel} via Scanner UI - ${itemDetails}. [${new Date().toLocaleString()}]`
+      details: `${itemIdsMeta} ${statusLabel} via Scanner UI - ${itemDetails}. [${new Date().toLocaleString()}]`
     });
 
     return json({ 

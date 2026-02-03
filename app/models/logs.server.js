@@ -87,3 +87,17 @@ export async function getLogForOrder(shop, orderId) {
     orderBy: { timestamp: "desc" }
   });
 }
+
+export async function getLogsForOrder(shop, orderId) {
+  return await db.scanLog.findMany({
+    where: { 
+      shop, 
+      orderId: { contains: orderId },
+      OR: [
+        { status: "FULFILLED" },
+        { status: "PARTIALLY FULFILLED" }
+      ]
+    },
+    orderBy: { timestamp: "desc" }
+  });
+}
