@@ -24,6 +24,8 @@ export async function getFabricOrders(admin, cursor = null, direction = "next") 
                       title
                       quantity
                       sku
+                      fulfillmentStatus
+                      unfulfilledQuantity
                       originalUnitPriceSet { shopMoney { amount } }
                       variant {
                         barcode
@@ -105,6 +107,7 @@ export async function getFulfilledFabricOrders(admin, cursor = null, direction =
                       title
                       quantity
                       sku
+                      unfulfilledQuantity
                       variant {
                          barcode
                          product { featuredImage { url } }
@@ -128,10 +131,23 @@ export async function getFulfilledFabricOrders(admin, cursor = null, direction =
   }
 }
 
-export async function getFabricInventory(admin, cursor = null, { sortKey = "ID", reverse = false, direction = "next" } = {}) {
+export async function getFabricInventory(admin, cursor = null, { query = "", sortKey = "ID", reverse = false, direction = "next" } = {}) {
   try {
-    const finalQuery = 'product_type:"Swatch Item"';
+    // Use RELEVANCE if searching, otherwise use the provided sortKey
+    const activeSortKey = query ? "RELEVANCE" : sortKey;
+    const activeReverse = query ? false : reverse;
 
+    // Universal search syntax: similar to Shopify Admin's own search bar
+    const escapedQuery = query.replace(/"/g, '\\"');
+    const binToken = query.startsWith('#') ? query.substring(1) : query;
+    
+    // We try to match the term appearing ANYWHERE (Title, SKU, Tags, indexed Metafields)
+    // We specifically include the versions with and without '#'
+    const finalQuery = query 
+      ? `product_type:"Swatch Item" AND ("${escapedQuery}" OR "${binToken}")` 
+      : 'product_type:"Swatch Item"';
+
+    console.log(`[INVENTORY SEARCH] Query: ${query}, finalQuery: ${finalQuery}, sortKey: ${activeSortKey}`);
     const paginationArgs = direction === "prev" ? `last: 10, before: "${cursor}"` : `first: 10, after: ${cursor ? `"${cursor}"` : "null"}`;
 
     const response = await admin.graphql(
@@ -171,12 +187,19 @@ export async function getFabricInventory(admin, cursor = null, { sortKey = "ID",
       { 
         variables: { 
           query: finalQuery,
-          sortKey,
-          reverse
+          sortKey: activeSortKey,
+          reverse: activeReverse
         } 
       }
     );
     const resJson = await response.json();
+    
+    if (resJson.errors) {
+      console.error("[INVENTORY SEARCH] GraphQL Errors:", JSON.stringify(resJson.errors, null, 2));
+    }
+    
+    console.log(`[INVENTORY SEARCH] Found ${resJson.data?.products?.edges?.length || 0} results`);
+
     return {
       edges: resJson.data?.products?.edges || [],
       pageInfo: resJson.data?.products?.pageInfo
@@ -209,6 +232,8 @@ export async function getPartiallyFulfilledOrders(admin, cursor = null, directio
                       title
                       quantity
                       sku
+                      fulfillmentStatus
+                      unfulfilledQuantity
                       variant {
                         barcode
                         sku

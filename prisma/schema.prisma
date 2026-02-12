@@ -49,6 +49,15 @@ model AppSettings {
   shop          String  @unique
   adminName     String  @default("Admin")
   adminPin      String  @default("1234")
+  brandLogo     String?
+  showStockTab  Boolean @default(true)
+  showOrdersTab Boolean @default(true)
+  showHistoryTab Boolean @default(true)
+  enableScanButton Boolean @default(true)
+  enableInventorySearch Boolean @default(true)
+  enableInventorySort Boolean @default(true)
+  showStaffManagement Boolean @default(true)
+  showLogoutButton Boolean @default(true)
 }
 
 model Staff {

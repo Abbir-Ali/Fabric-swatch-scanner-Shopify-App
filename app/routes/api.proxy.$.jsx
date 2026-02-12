@@ -22,13 +22,37 @@ export const loader = async ({ request }) => {
         // Try admin first
         let user = await validateAdminAuth(shop, identifier, pin);
         if (user) {
-          return json({ data: { valid: true, staff: user } });
+          const settings = await import("../models/settings.server").then(m => m.getAppSettings(shop));
+          return json({ data: { valid: true, staff: { 
+            ...user, 
+            brandLogo: settings.brandLogo,
+            showStockTab: settings.showStockTab,
+            showOrdersTab: settings.showOrdersTab,
+            showHistoryTab: settings.showHistoryTab,
+            enableScanButton: settings.enableScanButton,
+            enableInventorySearch: settings.enableInventorySearch,
+            enableInventorySort: settings.enableInventorySort,
+            showStaffManagement: settings.showStaffManagement,
+            showLogoutButton: settings.showLogoutButton
+          } } });
         }
 
         // Try staff
         user = await validateStaffAuth(shop, identifier, pin);
         if (user) {
-          return json({ data: { valid: true, staff: user } });
+          const settings = await import("../models/settings.server").then(m => m.getAppSettings(shop));
+          return json({ data: { valid: true, staff: { 
+            ...user, 
+            brandLogo: settings.brandLogo,
+            showStockTab: settings.showStockTab,
+            showOrdersTab: settings.showOrdersTab,
+            showHistoryTab: settings.showHistoryTab,
+            enableScanButton: settings.enableScanButton,
+            enableInventorySearch: settings.enableInventorySearch,
+            enableInventorySort: settings.enableInventorySort,
+            showStaffManagement: settings.showStaffManagement,
+            showLogoutButton: settings.showLogoutButton
+          } } });
         }
 
         return json({ data: { valid: false } });
@@ -36,11 +60,12 @@ export const loader = async ({ request }) => {
 
       case "inventory": {
         const cursor = url.searchParams.get("cursor");
+        const query = url.searchParams.get("query") || "";
         const direction = url.searchParams.get("direction") || "next";
         const sortKey = url.searchParams.get("sortKey") || "CREATED_AT";
         const reverse = url.searchParams.get("reverse") === "true";
         
-        const result = await getFabricInventory(admin, cursor, { sortKey, reverse, direction });
+        const result = await getFabricInventory(admin, cursor, { query, sortKey, reverse, direction });
         return json({ data: result });
       }
 
@@ -49,7 +74,24 @@ export const loader = async ({ request }) => {
         const direction = url.searchParams.get("direction") || "next";
         
         const result = await getFabricOrders(admin, cursor, direction);
-        return json({ data: result });
+        
+        // Enhance with log data
+        const { getLogsForOrder } = await import("../models/logs.server");
+        const enhancedEdges = await Promise.all(result.edges.map(async (edge) => {
+          const logs = await getLogsForOrder(shop, edge.node.id);
+          return {
+            ...edge,
+            logs: logs ? logs.map(l => ({ 
+              scannedBy: l.scannedBy, 
+              staffEmail: l.staffEmail, 
+              status: l.status,
+              details: l.details,
+              timestamp: l.timestamp 
+            })) : []
+          };
+        }));
+
+        return json({ data: { ...result, edges: enhancedEdges } });
       }
 
       case "fulfilled": {
@@ -94,6 +136,23 @@ export const loader = async ({ request }) => {
         }));
 
         return json({ data: { ...result, edges: enhancedEdges } });
+      }
+
+      case "settings": {
+        const settings = await import("../models/settings.server").then(m => m.getAppSettings(shop));
+        return json({ 
+          data: { 
+            brandLogo: settings.brandLogo,
+            showStockTab: settings.showStockTab,
+            showOrdersTab: settings.showOrdersTab,
+            showHistoryTab: settings.showHistoryTab,
+            enableScanButton: settings.enableScanButton,
+            enableInventorySearch: settings.enableInventorySearch,
+            enableInventorySort: settings.enableInventorySort,
+            showStaffManagement: settings.showStaffManagement,
+            showLogoutButton: settings.showLogoutButton
+          } 
+        });
       }
 
       default:
@@ -168,7 +227,7 @@ export const action = async ({ request }) => {
     
     // Try to find an open or scheduled fulfillment order
     const openFO = fulfillmentOrders.find(e => 
-      e.node.status === "OPEN" || e.node.status === "SCHEDULED" || e.node.status === "ON_HOLD"
+      e.node.status === "OPEN" || e.node.status === "SCHEDULED" || e.node.status === "ON_HOLD" || e.node.status === "IN_PROGRESS"
     );
 
     if (!openFO) {
@@ -193,7 +252,7 @@ export const action = async ({ request }) => {
         const verifiedItem = verifiedItems.find(v => v.id === foLineItem.lineItem.id);
         fulfillmentOrderLineItems.push({
           id: foLineItem.id,
-          quantity: verifiedItem?.quantity || foLineItem.totalQuantity
+          quantity: Math.min(verifiedItem?.quantity || foLineItem.remainingQuantity, foLineItem.remainingQuantity)
         });
       }
     });
@@ -206,8 +265,15 @@ export const action = async ({ request }) => {
       });
     }
     
-    const isPartialFulfillment = fulfillmentOrderLineItems.length < foLineItems.length;
-    console.log(`[Fulfillment] Creating ${isPartialFulfillment ? 'PARTIAL' : 'FULL'} fulfillment for ${fulfillmentOrderLineItems.length} of ${foLineItems.length} items`);
+    const isPartialFulfillment = fulfillmentOrderLineItems.length < foLineItems.filter(i => i.remainingQuantity > 0).length;
+    
+    // Calculate precise quantities for the success message
+    const totalRemainingBefore = foLineItems.reduce((acc, item) => acc + item.remainingQuantity, 0);
+    const fulfilledNowCount = fulfillmentOrderLineItems.reduce((acc, item) => acc + item.quantity, 0);
+    const totalRemainingAfter = Math.max(0, totalRemainingBefore - fulfilledNowCount);
+
+    console.log(`[Fulfillment] Before: ${totalRemainingBefore}, Fulfilled: ${fulfilledNowCount}, Remaining: ${totalRemainingAfter}`);
+    console.log(`[Fulfillment] Creating ${totalRemainingAfter > 0 ? 'PARTIAL' : 'FULL'} fulfillment for ${fulfillmentOrderLineItems.length} line items`);
     
     // 3. Create fulfillment using fulfillmentCreate (Shopify recommended)
     const fulfillmentResponse = await admin.graphql(
@@ -251,13 +317,13 @@ export const action = async ({ request }) => {
       });
     }
     
-    console.log(`[Fulfillment] ${isPartialFulfillment ? 'Partial' : 'Full'} fulfillment created successfully for ${orderId}`);
+    console.log(`[Fulfillment] ${totalRemainingAfter > 0 ? 'Partial' : 'Full'} fulfillment created successfully for ${orderId}`);
 
     // 4. Log it
-    const statusLabel = isPartialFulfillment ? "PARTIALLY FULFILLED" : "FULFILLED";
-    const itemDetails = isPartialFulfillment 
-      ? `${fulfillmentOrderLineItems.length} of ${foLineItems.length} items fulfilled` 
-      : `All ${fulfillmentOrderLineItems.length} items fulfilled`;
+    const statusLabel = totalRemainingAfter > 0 ? "PARTIALLY FULFILLED" : "FULFILLED";
+    const itemDetails = totalRemainingAfter > 0 
+      ? `${fulfilledNowCount} items shipped. ${totalRemainingAfter} items remaining.` 
+      : `All items fulfilled (${fulfilledNowCount} in this batch)`;
     
     // Store fulfilled item IDs in a metadata tag within details for per-item attribution
     const itemIdsMeta = `[ITEMS:${verifiedItemIds.join(',')}]`;
@@ -272,10 +338,10 @@ export const action = async ({ request }) => {
 
     return json({ 
       success: true, 
-      partiallyFulfilled: isPartialFulfillment,
-      message: isPartialFulfillment 
-        ? `${fulfillmentOrderLineItems.length} items shipped. ${foLineItems.length - fulfillmentOrderLineItems.length} items remaining.`
-        : `Order fulfilled successfully! All ${fulfillmentOrderLineItems.length} items shipped.`
+      partiallyFulfilled: totalRemainingAfter > 0,
+      message: totalRemainingAfter > 0 
+        ? `${fulfilledNowCount} items shipped. ${totalRemainingAfter} items remaining.`
+        : `Order fulfilled successfully! All ${fulfilledNowCount} items in this batch shipped.`
     });
   } catch (error) {
     console.error("[Proxy POST Error]", error);

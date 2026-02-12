@@ -10,7 +10,16 @@ export async function getAppSettings(shop) {
       data: {
         shop,
         adminPin: "1234",
-        adminName: "Admin"
+        adminName: "Admin",
+        brandLogo: "",
+        showStockTab: true,
+        showOrdersTab: true,
+        showHistoryTab: true,
+        enableScanButton: true,
+        enableInventorySearch: true,
+        enableInventorySort: true,
+        showStaffManagement: true,
+        showLogoutButton: true
       },
     });
   }

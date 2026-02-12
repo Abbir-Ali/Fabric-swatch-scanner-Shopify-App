@@ -90,7 +90,7 @@ export const action = async ({ request }) => {
 };
 
 export default function FabricInventory() {
-  const { products, pageInfo, page, shopDomain, locationId, initialSort, initialReverse } = useLoaderData();
+  const { products, pageInfo, page, shopDomain, locationId, initialQuery, initialSort, initialReverse } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const navigation = useNavigation();
@@ -106,6 +106,54 @@ export default function FabricInventory() {
   ];
 
   const [sortSelected, setSortSelected] = useState([`${initialSort}:${initialReverse}`]);
+  const [queryValue, setQueryValue] = useState(initialQuery || "");
+
+  // Sync state with URL changes (e.g., when browser back/forward used or navigation completes)
+  useEffect(() => {
+    setQueryValue(initialQuery || "");
+  }, [initialQuery]);
+
+  const handleQueryChange = useCallback((value) => {
+    setQueryValue(value);
+  }, []);
+
+  // Debounced search effect
+  useEffect(() => {
+    // Skip if query hasn't changed from initial setup or if it's identical to what's in URL
+    const urlQuery = searchParams.get("query") || "";
+    if (queryValue === urlQuery) return;
+
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(searchParams);
+      if (queryValue) params.set("query", queryValue);
+      else params.delete("query");
+      params.delete("cursor");
+      params.delete("direction");
+      params.set("page", "1");
+      navigate(`?${params.toString()}`, { replace: true });
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [queryValue, searchParams, navigate]);
+  const handleQueryClear = useCallback(() => {
+    setQueryValue("");
+    const params = new URLSearchParams(searchParams);
+    params.delete("query");
+    params.delete("cursor");
+    params.delete("direction");
+    params.set("page", "1");
+    navigate(`?${params.toString()}`);
+  }, [searchParams, navigate]);
+
+  const handleSearchSubmit = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    if (queryValue) params.set("query", queryValue);
+    else params.delete("query");
+    params.delete("cursor");
+    params.delete("direction");
+    params.set("page", "1");
+    navigate(`?${params.toString()}`);
+  }, [queryValue, searchParams, navigate]);
 
   const handleSortChange = useCallback((value) => {
     setSortSelected(value);
@@ -196,6 +244,10 @@ export default function FabricInventory() {
               sortOptions={sortOptions}
               sortSelected={sortSelected}
               onSort={handleSortChange}
+              onQueryChange={handleQueryChange}
+              onQueryClear={handleQueryClear}
+              onSubmit={handleSearchSubmit}
+              queryValue={queryValue}
               tabs={[]}
               selected={0}
               onSelect={() => {}}
@@ -204,7 +256,7 @@ export default function FabricInventory() {
               loading={isLoading}
               filters={[]}
               canCreateNewView={false}
-              hideQueryField
+              queryPlaceholder="Search products by title, SKU, or barcode..."
             />
             
             <IndexTable

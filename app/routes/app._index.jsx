@@ -12,6 +12,7 @@ import { useState } from "react";
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const { getDashboardStats, getLogsForOrder } = await import("../models/logs.server");
+  const { getAppSettings } = await import("../models/settings.server");
   const { default: shopify } = await import("../shopify.server");
   const url = new URL(request.url);
 
@@ -29,12 +30,13 @@ export const loader = async ({ request }) => {
   const fulfilledCursor = url.searchParams.get("fulfilledCursor");
   const fulfilledDir = url.searchParams.get("fulfilledDir") || "next";
 
-  const [pendingData, partialData, fulfilledData, stats, liveFulfilledCount] = await Promise.all([
+  const [pendingData, partialData, fulfilledData, stats, liveFulfilledCount, settings] = await Promise.all([
     getFabricOrders(admin, pendingCursor, pendingDir),
     getPartiallyFulfilledOrders(admin, partialCursor, partialDir),
     getFulfilledFabricOrders(admin, fulfilledCursor, fulfilledDir),
     getDashboardStats(session.shop),
-    getFulfilledOrdersCount(admin)
+    getFulfilledOrdersCount(admin),
+    getAppSettings(session.shop)
   ]);
 
   const partialWithLogs = await Promise.all(partialData.edges.map(async (edge) => {
@@ -58,12 +60,13 @@ export const loader = async ({ request }) => {
     partialPageInfo: partialData.pageInfo,
     fulfilledOrders: fulfilledWithLogs, 
     fulfilledPageInfo: fulfilledData.pageInfo,
-    stats: { ...stats, totalFulfilled: liveFulfilledCount, totalPartial: partialData.edges.length } 
+    stats: { ...stats, totalFulfilled: liveFulfilledCount, totalPartial: partialData.edges.length },
+    settings
   };
 };
 
 export default function Index() {
-  const { swatchOrders, partialOrders, fulfilledOrders, stats, pendingPageInfo, partialPageInfo, fulfilledPageInfo } = useLoaderData();
+  const { swatchOrders, partialOrders, fulfilledOrders, stats, pendingPageInfo, partialPageInfo, fulfilledPageInfo, settings } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const revalidator = useRevalidator();
@@ -252,7 +255,6 @@ export default function Index() {
             </BlockStack>
           </Card>
         </Layout.Section>
-
 
         <Layout.Section>
           <Card>
