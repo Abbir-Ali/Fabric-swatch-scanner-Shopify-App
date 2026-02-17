@@ -134,6 +134,7 @@ export async function setInventory(admin, inventoryItemId, locationId, quantity)
         input: {
           reason: "correction",
           name: "available",
+          ignoreCompareQuantity: true,
           quantities: [
             {
               quantity: parseInt(quantity, 10),

@@ -8,7 +8,7 @@ import {
 import { ArrowRightIcon, EditIcon, CheckIcon, XIcon } from "@shopify/polaris-icons";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getFabricInventory, getShopLocations } from "../services/order.server";
-import { adjustInventory } from "../services/inventory.server";
+import { adjustInventory, setInventory } from "../services/inventory.server";
 
 import BarcodeImage from "../components/BarcodeImage";
 
@@ -106,6 +106,22 @@ export const action = async ({ request }) => {
       return { success: true, message: "Inventory adjusted successfully" };
     } catch (error) {
       console.error("[ACTION] Adjust Error:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  if (actionType === "setInventory") {
+    const inventoryItemId = formData.get("inventoryItemId");
+    const locationId = formData.get("locationId");
+    const quantity = formData.get("quantity");
+
+    console.log(`[ACTION] Setting Inventory: Item=${inventoryItemId}, Location=${locationId}, Qty=${quantity}`);
+
+    try {
+      await setInventory(admin, inventoryItemId, locationId, quantity);
+      return { success: true, message: "Inventory set successfully" };
+    } catch (error) {
+      console.error("[ACTION] Set Error:", error);
       return { success: false, error: error.message };
     }
   }
@@ -367,13 +383,23 @@ export default function FabricInventory() {
 function InventoryAdjuster({ inventoryItemId, locationId }) {
   const fetcher = useFetcher();
   const [active, setActive] = useState(false);
-  const [delta, setDelta] = useState("0");
+  const [value, setValue] = useState("0");
+  const [mode, setMode] = useState("adjust"); // 'adjust' or 'set'
+
   const toggleActive = useCallback(() => setActive((prev) => !prev), []);
-  const handleAdjust = () => {
-    fetcher.submit({ actionType: "adjustInventory", inventoryItemId, locationId, delta }, { method: "post" });
+
+  const handleSync = () => {
+    const actionType = mode === "adjust" ? "adjustInventory" : "setInventory";
+    const fieldName = mode === "adjust" ? "delta" : "quantity";
+    
+    fetcher.submit(
+      { actionType, inventoryItemId, locationId, [fieldName]: value },
+      { method: "post" }
+    );
     setActive(false);
-    setDelta("0");
+    setValue("0");
   };
+
   const isLoading = fetcher.state !== "idle";
 
   return (
@@ -384,9 +410,43 @@ function InventoryAdjuster({ inventoryItemId, locationId }) {
       sectioned
     >
       <BlockStack gap="300">
-        <Text variant="headingXs">Adjust Stock</Text>
-        <TextField label="Add or Subtract" type="number" value={delta} onChange={setDelta} autoComplete="off" />
-        <Button size="slim" onClick={(e) => { e.stopPropagation(); handleAdjust(); }} loading={isLoading} variant="primary">Sync stock</Button>
+        <Text variant="headingXs">Inventory Management</Text>
+        
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
+          <Button 
+            size="slim" 
+            pressed={mode === 'adjust'} 
+            onClick={() => { setMode('adjust'); setValue("0"); }}
+          >
+            Adjust by
+          </Button>
+          <Button 
+            size="slim" 
+            pressed={mode === 'set'} 
+            onClick={() => { setMode('set'); setValue("0"); }}
+          >
+            New
+          </Button>
+        </div>
+
+        <TextField 
+          label={mode === 'adjust' ? "Adjust by quantity" : "Set New Quantity"} 
+          type="number" 
+          value={value} 
+          onChange={setValue} 
+          autoComplete="off" 
+          helpText={mode === 'adjust' ? "Use + or - values (e.g. 5, -3)" : "Overrides current stock"}
+        />
+        
+        <Button 
+          size="slim" 
+          onClick={(e) => { e.stopPropagation(); handleSync(); }} 
+          loading={isLoading} 
+          variant="primary" 
+          fullWidth
+        >
+          {mode === 'adjust' ? 'Adjust Stock' : 'Set Stock'}
+        </Button>
       </BlockStack>
     </Popover>
   );
