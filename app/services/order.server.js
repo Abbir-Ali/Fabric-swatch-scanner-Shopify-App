@@ -131,77 +131,91 @@ export async function getFulfilledFabricOrders(admin, cursor = null, direction =
   }
 }
 
-export async function getFabricInventory(admin, cursor = null, { query = "", sortKey = "ID", reverse = false, direction = "next" } = {}) {
+export async function getFabricInventory(admin, cursor = null, { query = "", sortKey = "ID", reverse = false, direction = "next", locationId = null } = {}) {
   try {
-    // Use RELEVANCE if searching, otherwise use the provided sortKey
     const activeSortKey = query ? "RELEVANCE" : sortKey;
     const activeReverse = query ? false : reverse;
-
-    // Universal search syntax: similar to Shopify Admin's own search bar
     const escapedQuery = query.replace(/"/g, '\\"');
     const binToken = query.startsWith('#') ? query.substring(1) : query;
-    
-    // We try to match the term appearing ANYWHERE (Title, SKU, Tags, indexed Metafields)
-    // We specifically include the versions with and without '#'
     const finalQuery = query 
       ? `product_type:"Swatch Item" AND ("${escapedQuery}" OR "${binToken}")` 
       : 'product_type:"Swatch Item"';
 
-    console.log(`[INVENTORY SEARCH] Query: ${query}, finalQuery: ${finalQuery}, sortKey: ${activeSortKey}`);
     const paginationArgs = direction === "prev" ? `last: 10, before: "${cursor}"` : `first: 10, after: ${cursor ? `"${cursor}"` : "null"}`;
 
-    const response = await admin.graphql(
-      `#graphql
-      query getInventory($query: String, $sortKey: ProductSortKeys, $reverse: Boolean) {
-        products(${paginationArgs}, query: $query, sortKey: $sortKey, reverse: $reverse) {
-          pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
-          edges {
-            node {
-              id
-              legacyResourceId
-              title
-              description
-              totalInventory
-              featuredImage { url }
-              metafields(first: 10) {
-                edges {
-                  node {
-                    namespace
-                    key
-                    value
+    console.log(`[INVENTORY SEARCH] Variables:`, { finalQuery, activeSortKey, activeReverse, locationId });
+
+    let resJson;
+    try {
+      const response = await admin.graphql(
+        `#graphql
+        query getInventory($query: String, $sortKey: ProductSortKeys, $reverse: Boolean) {
+          products(${paginationArgs}, query: $query, sortKey: $sortKey, reverse: $reverse) {
+            pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
+            edges {
+              node {
+                id
+                legacyResourceId
+                title
+                totalInventory
+                featuredImage { url }
+                metafields(first: 10) {
+                  edges {
+                    node {
+                      namespace
+                      key
+                      value
+                    }
                   }
                 }
-              }
-              variants(first: 1) {
-                edges {
-                  node {
-                    sku
-                    barcode
+                variants(first: 1) {
+                  edges {
+                    node {
+                      id
+                      sku
+                      barcode
+                      inventoryItem {
+                        id
+                        inventoryLevels(first: 10) {
+                          edges {
+                            node {
+                              id
+                              location { id name }
+                              quantities(names: ["available"]) {
+                                name
+                                quantity
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }
             }
           }
-        }
-      }`,
-      { 
-        variables: { 
-          query: finalQuery,
-          sortKey: activeSortKey,
-          reverse: activeReverse
-        } 
-      }
-    );
-    const resJson = await response.json();
-    
+        }`,
+        { variables: { query: finalQuery, sortKey: activeSortKey, reverse: activeReverse } }
+      );
+      resJson = await response.json();
+    } catch (err) {
+      console.error("[INVENTORY SEARCH] FATAL ERROR:", err);
+      throw err;
+    }
+
     if (resJson.errors) {
-      console.error("[INVENTORY SEARCH] GraphQL Errors:", JSON.stringify(resJson.errors, null, 2));
+      console.error("[INVENTORY SEARCH] GRAPHQL ERRORS:", JSON.stringify(resJson.errors, null, 2));
+    }
+
+    const edges = resJson.data?.products?.edges || [];
+    console.log(`[INVENTORY SEARCH] Success: Found ${edges.length} products for query: "${finalQuery}"`);
+    if (edges.length === 0 && !query) {
+       console.log("[INVENTORY SEARCH] WARNING: No products found with 'Swatch Item' type. Checking all products...");
     }
     
-    console.log(`[INVENTORY SEARCH] Found ${resJson.data?.products?.edges?.length || 0} results`);
-
     return {
-      edges: resJson.data?.products?.edges || [],
+      edges: edges,
       pageInfo: resJson.data?.products?.pageInfo
     };
   } catch (error) {
@@ -327,10 +341,12 @@ export async function getShopLocations(admin) {
     const response = await admin.graphql(
       `#graphql
       query getLocations {
-        locations(first: 5) {
+        locations(first: 10) {
           nodes {
             id
             name
+            isActive
+            isPrimary
           }
         }
       }`

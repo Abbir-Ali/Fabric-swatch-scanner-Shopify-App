@@ -2,13 +2,20 @@ import { useLoaderData, useFetcher, useNavigate, useSearchParams, useNavigation 
 import { authenticate } from "../shopify.server";
 import { 
   Page, Layout, Card, IndexTable, Button, BlockStack, Badge, 
-  InlineStack, Thumbnail, Text, Pagination, Box, IndexFilters, useSetIndexFiltersMode, TextField
+  InlineStack, Thumbnail, Text, Pagination, Box, IndexFilters, TextField, Select, useSetIndexFiltersMode,
+  Popover, Banner, Spinner
 } from "@shopify/polaris";
 import { ArrowRightIcon, EditIcon, CheckIcon, XIcon } from "@shopify/polaris-icons";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { getFabricInventory, getShopLocations } from "../services/order.server";
+import { adjustInventory } from "../services/inventory.server";
+
 import BarcodeImage from "../components/BarcodeImage";
 
+/**
+ * LOADER
+ * Fetches fabric products, pagination info, and shop locations.
+ */
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
@@ -20,29 +27,39 @@ export const loader = async ({ request }) => {
   const sortKey = url.searchParams.get("sortKey") || "CREATED_AT";
   const reverse = url.searchParams.get("reverse") === "true";
 
-  const { edges, pageInfo } = await getFabricInventory(admin, cursor, { query, sortKey, reverse, direction });
+  const locations = await getShopLocations(admin);
+  const primaryLocation = locations.find(loc => loc.isPrimary) || locations[0];
+  const locationId = url.searchParams.get("locationId") || primaryLocation?.id || null;
+  
+  const { edges, pageInfo } = await getFabricInventory(admin, cursor, { 
+    query, sortKey, reverse, direction, locationId 
+  });
   
   const shopDomain = session.shop.replace(".myshopify.com", "");
-  const locations = await getShopLocations(admin);
-  const locationId = locations[0]?.id || null;
 
   return {
     products: edges,
     pageInfo,
     page,
     shopDomain,
-    locationId,
+    locations,
+    currentLocationId: locationId,
     initialQuery: query,
     initialSort: sortKey,
     initialReverse: reverse
   };
 };
 
+/**
+ * ACTION
+ * Handles inventory adjustments, bulk updates, and CSV imports.
+ */
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   
   const actionType = formData.get("actionType");
+  console.log(`[ACTION] Received action: ${actionType}`, Object.fromEntries(formData.entries()));
 
   if (actionType === "updateBin") {
     const productId = formData.get("productId");
@@ -66,60 +83,75 @@ export const action = async ({ request }) => {
           }
         }`,
         {
-          variables: {
-            ownerId: productId,
-            value: binValue || ""
-          }
+          variables: { ownerId: productId, value: binValue || "" }
         }
       );
       
       const resData = await response.json();
       const errors = resData.data?.metafieldsSet?.userErrors || [];
-      
-      if (errors.length > 0) {
-        return { success: false, error: errors[0].message };
-      }
-
+      if (errors.length > 0) return { success: false, error: errors[0].message };
       return { success: true, field: "bin", updatedValue: binValue };
     } catch (error) {
       return { success: false, error: error.message };
     }
   }
 
+  if (actionType === "adjustInventory") {
+    const inventoryItemId = formData.get("inventoryItemId");
+    const locationId = formData.get("locationId");
+    const delta = formData.get("delta");
+
+    try {
+      await adjustInventory(admin, inventoryItemId, locationId, delta);
+      return { success: true, message: "Inventory adjusted successfully" };
+    } catch (error) {
+      console.error("[ACTION] Adjust Error:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+
   return { success: false, error: "Invalid action type" };
 };
 
+/**
+ * COMPONENT: FabricInventory
+ * Main page component.
+ */
 export default function FabricInventory() {
-  const { products, pageInfo, page, shopDomain, locationId, initialQuery, initialSort, initialReverse } = useLoaderData();
+  const { products, pageInfo, page, shopDomain, locations, currentLocationId, initialQuery, initialSort, initialReverse } = useLoaderData();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const navigation = useNavigation();
+  const fetcher = useFetcher();
   const { mode, setMode } = useSetIndexFiltersMode();
 
+  const [selectedResources, setSelectedResources] = useState([]);
+
+  const locationOptions = useMemo(() => {
+    if (!locations || locations.length === 0) return [{ label: "No locations found", value: "" }];
+    return locations.map(loc => ({ label: loc.name, value: loc.id }));
+  }, [locations]);
+
   const sortOptions = [
-    { label: 'Newest first', value: 'CREATED_AT:true', directionLabel: 'Descending' },
-    { label: 'Oldest first', value: 'CREATED_AT:false', directionLabel: 'Ascending' },
-    { label: 'Alphabetical (A-Z)', value: 'TITLE:false', directionLabel: 'Ascending' },
-    { label: 'Alphabetical (Z-A)', value: 'TITLE:true', directionLabel: 'Descending' },
-    { label: 'Stock (Low to High)', value: 'INVENTORY_TOTAL:false', directionLabel: 'Ascending' },
-    { label: 'Stock (High to Low)', value: 'INVENTORY_TOTAL:true', directionLabel: 'Descending' },
+    { label: 'Newest first', value: 'CREATED_AT:true' },
+    { label: 'Oldest first', value: 'CREATED_AT:false' },
+    { label: 'Alphabetical (A-Z)', value: 'TITLE:false' },
+    { label: 'Alphabetical (Z-A)', value: 'TITLE:true' },
+    { label: 'Stock (Low to High)', value: 'INVENTORY_TOTAL:false' },
+    { label: 'Stock (High to Low)', value: 'INVENTORY_TOTAL:true' },
   ];
 
   const [sortSelected, setSortSelected] = useState([`${initialSort}:${initialReverse}`]);
   const [queryValue, setQueryValue] = useState(initialQuery || "");
 
-  // Sync state with URL changes (e.g., when browser back/forward used or navigation completes)
   useEffect(() => {
     setQueryValue(initialQuery || "");
   }, [initialQuery]);
 
-  const handleQueryChange = useCallback((value) => {
-    setQueryValue(value);
-  }, []);
+  const handleQueryChange = useCallback((value) => setQueryValue(value), []);
 
-  // Debounced search effect
   useEffect(() => {
-    // Skip if query hasn't changed from initial setup or if it's identical to what's in URL
     const urlQuery = searchParams.get("query") || "";
     if (queryValue === urlQuery) return;
 
@@ -135,6 +167,7 @@ export default function FabricInventory() {
 
     return () => clearTimeout(timer);
   }, [queryValue, searchParams, navigate]);
+
   const handleQueryClear = useCallback(() => {
     setQueryValue("");
     const params = new URLSearchParams(searchParams);
@@ -144,16 +177,6 @@ export default function FabricInventory() {
     params.set("page", "1");
     navigate(`?${params.toString()}`);
   }, [searchParams, navigate]);
-
-  const handleSearchSubmit = useCallback(() => {
-    const params = new URLSearchParams(searchParams);
-    if (queryValue) params.set("query", queryValue);
-    else params.delete("query");
-    params.delete("cursor");
-    params.delete("direction");
-    params.set("page", "1");
-    navigate(`?${params.toString()}`);
-  }, [queryValue, searchParams, navigate]);
 
   const handleSortChange = useCallback((value) => {
     setSortSelected(value);
@@ -167,39 +190,42 @@ export default function FabricInventory() {
     navigate(`?${params.toString()}`);
   }, [searchParams, navigate]);
 
+  const handleLocationChange = useCallback((value) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("locationId", value);
+    navigate(`?${params.toString()}`);
+  }, [searchParams, navigate]);
+
   const handlePagination = (cursor, direction) => {
     const params = new URLSearchParams(searchParams);
     if (cursor) {
       params.set("cursor", cursor);
       params.set("direction", direction);
       params.set("page", direction === "next" ? (page + 1).toString() : (page - 1).toString());
-    } else {
-      params.delete("cursor");
-      params.delete("direction");
-      params.set("page", "1");
     }
     navigate(`?${params.toString()}`);
   };
 
+
   const resourceName = { singular: 'product', plural: 'products' };
-  const isLoading = navigation.state === "loading";
+  const isLoading = navigation.state === "loading" || fetcher.state !== "idle";
 
   const rowMarkup = products.map(({ node }, index) => {
-    const { title, id, legacyResourceId, featuredImage, variants, totalInventory, metafields: metaEdges } = node;
+    const { title, id, legacyResourceId, featuredImage, variants, metafields: metaEdges } = node;
     const variant = variants.edges[0]?.node;
     const sku = variant?.sku || "N/A";
     const barcode = variant?.barcode || "";
-    
+    const inventoryItemId = variant?.inventoryItem?.id;
     const binMeta = metaEdges?.edges.find(e => e.node.key === "bin_number")?.node;
     const adminUrl = `https://admin.shopify.com/store/${shopDomain}/products/${legacyResourceId}`;
     
-    const itemIndex = (page - 1) * 10 + index + 1;
+    // Find the inventory level matching the selected locationId
+    const levels = variant?.inventoryItem?.inventoryLevels?.edges || [];
+    const matchingLevel = levels.find(l => l.node.location.id === currentLocationId);
+    const available = matchingLevel?.node?.quantities?.find(q => q.name === "available")?.quantity || 0;
 
     return (
-      <IndexTable.Row id={id} key={id} position={index}>
-        <IndexTable.Cell>
-           <Text variant="bodyMd" fontWeight="bold" tone="subdued" as="span">{itemIndex}</Text>
-        </IndexTable.Cell>
+      <IndexTable.Row id={id} key={id} position={index} selected={selectedResources.includes(id)}>
         <IndexTable.Cell>
           <Thumbnail source={featuredImage?.url || ""} alt={title} size="small" />
         </IndexTable.Cell>
@@ -210,7 +236,10 @@ export default function FabricInventory() {
           </div>
         </IndexTable.Cell>
         <IndexTable.Cell>
-           <Badge tone={totalInventory > 0 ? "success" : "critical"}>{totalInventory} available</Badge>
+           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Badge tone={available > 0 ? "success" : "critical"}>{available} available</Badge>
+              <InventoryAdjuster inventoryItemId={inventoryItemId} locationId={currentLocationId} />
+           </div>
         </IndexTable.Cell>
         <IndexTable.Cell>
           <BinEditor productId={id} initialBin={binMeta?.value || ""} />
@@ -222,13 +251,7 @@ export default function FabricInventory() {
         </IndexTable.Cell>
         <IndexTable.Cell>
            <div style={{ textAlign: 'right' }}>
-              <Button 
-                icon={ArrowRightIcon} 
-                variant="plain" 
-                target="_blank" 
-                url={adminUrl} 
-                accessibilityLabel="Admin View" 
-              />
+              <Button icon={ArrowRightIcon} variant="plain" target="_blank" url={adminUrl} />
            </div>
         </IndexTable.Cell>
       </IndexTable.Row>
@@ -238,6 +261,38 @@ export default function FabricInventory() {
   return (
     <Page title="Swatch Item Inventory" fullWidth>
       <Layout>
+        {fetcher.data?.message && (
+          <Layout.Section>
+            <Banner tone="success" onDismiss={() => fetcher.data.message = null}>
+              <p>{fetcher.data.message}</p>
+            </Banner>
+          </Layout.Section>
+        )}
+        
+        {fetcher.data?.error && (
+          <Layout.Section>
+            <Banner tone="critical" onDismiss={() => fetcher.data.error = null}>
+              <p>{fetcher.data.error}</p>
+            </Banner>
+          </Layout.Section>
+        )}
+
+        <Layout.Section>
+           <Card>
+              <InlineStack align="space-between" blockAlign="center">
+                <Box minWidth="300px">
+                   <Select
+                      label="Select Warehouse / Location"
+                      options={locationOptions}
+                      onChange={handleLocationChange}
+                      value={currentLocationId}
+                   />
+                </Box>
+                <Text tone="subdued">Inventory actions will apply to the selected location.</Text>
+              </InlineStack>
+           </Card>
+        </Layout.Section>
+        
         <Layout.Section>
           <Card padding="0">
             <IndexFilters
@@ -246,7 +301,6 @@ export default function FabricInventory() {
               onSort={handleSortChange}
               onQueryChange={handleQueryChange}
               onQueryClear={handleQueryClear}
-              onSubmit={handleSearchSubmit}
               queryValue={queryValue}
               tabs={[]}
               selected={0}
@@ -256,14 +310,13 @@ export default function FabricInventory() {
               loading={isLoading}
               filters={[]}
               canCreateNewView={false}
-              queryPlaceholder="Search products by title, SKU, or barcode..."
+              queryPlaceholder="Search products..."
             />
             
             <IndexTable
               resourceName={resourceName}
               itemCount={products.length}
               headings={[
-                { title: '#' },
                 { title: 'Image' },
                 { title: 'Product Detail' },
                 { title: 'Stock Status' },
@@ -271,7 +324,9 @@ export default function FabricInventory() {
                 { title: 'Barcode Ref' },
                 { title: 'View', alignment: 'end' },
               ]}
-              selectable={false}
+              selectedResources={selectedResources}
+              onSelectionChange={setSelectedResources}
+              bulkActions={[]}
               hasMoreItems={pageInfo?.hasNextPage}
               loading={isLoading}
             >
@@ -291,10 +346,46 @@ export default function FabricInventory() {
           </Card>
         </Layout.Section>
       </Layout>
+
     </Page>
   );
 }
 
+/**
+ * HELPER: InventoryAdjuster
+ */
+function InventoryAdjuster({ inventoryItemId, locationId }) {
+  const fetcher = useFetcher();
+  const [active, setActive] = useState(false);
+  const [delta, setDelta] = useState("0");
+  const toggleActive = useCallback(() => setActive((prev) => !prev), []);
+  const handleAdjust = () => {
+    fetcher.submit({ actionType: "adjustInventory", inventoryItemId, locationId, delta }, { method: "post" });
+    setActive(false);
+    setDelta("0");
+  };
+  const isLoading = fetcher.state !== "idle";
+
+  return (
+    <Popover
+      active={active}
+      activator={<Button icon={EditIcon} variant="plain" onClick={(e) => { e.stopPropagation(); toggleActive(); }} size="slim" />}
+      onClose={toggleActive}
+      sectioned
+    >
+      <BlockStack gap="300">
+        <Text variant="headingXs">Adjust Stock</Text>
+        <TextField label="Add or Subtract" type="number" value={delta} onChange={setDelta} autoComplete="off" />
+        <Button size="slim" onClick={(e) => { e.stopPropagation(); handleAdjust(); }} loading={isLoading} variant="primary">Sync stock</Button>
+      </BlockStack>
+    </Popover>
+  );
+}
+
+
+/**
+ * HELPER: BinEditor
+ */
 function BinEditor({ productId, initialBin }) {
   const fetcher = useFetcher();
   const [bin, setBin] = useState(initialBin);
@@ -309,53 +400,23 @@ function BinEditor({ productId, initialBin }) {
   useEffect(() => {
     if (fetcher.data?.success && fetcher.data?.field === "bin") {
       setBin(fetcher.data.updatedValue);
-      setTempBin(fetcher.data.updatedValue);
       setIsEditing(false);
     }
   }, [fetcher.data]);
 
-  const isLoading = fetcher.state !== "idle";
-  const error = fetcher.data?.success === false ? fetcher.data.error : null;
-
   if (isEditing) {
     return (
       <InlineStack gap="100" wrap={false}>
-          <div style={{ width: '90px' }}>
-              <TextField 
-                  value={tempBin} 
-                  onChange={setTempBin} 
-                  autoComplete="off"
-                  labelHidden
-                  label="Bin"
-                  disabled={isLoading}
-              />
-          </div>
-          <Button icon={CheckIcon} variant="primary" onClick={() => fetcher.submit({ actionType: "updateBin", productId, binValue: tempBin }, { method: "post" })} loading={isLoading} size="slim" />
-          <Button icon={XIcon} onClick={() => setIsEditing(false)} disabled={isLoading} size="slim" />
+        <TextField value={tempBin} onChange={setTempBin} autoComplete="off" labelHidden label="Bin" size="slim" />
+        <Button icon={CheckIcon} variant="primary" onClick={(e) => { e.stopPropagation(); fetcher.submit({ actionType: "updateBin", productId, binValue: tempBin }, { method: "post" }); }} size="slim" />
+        <Button icon={XIcon} onClick={(e) => { e.stopPropagation(); setIsEditing(false); }} size="slim" />
       </InlineStack>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <button 
-        onClick={() => setIsEditing(true)}
-        style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '10px', 
-          background: bin ? '#f0fdf4' : '#fff',
-          padding: '6px 10px', 
-          borderRadius: '8px',
-          cursor: 'pointer',
-          border: '1px solid #e1e4e8',
-          width: 'fit-content'
-        }}
-      >
-          <Text fontWeight="bold" tone={bin ? "success" : "subdued"}>{bin || "Set Bin"}</Text>
-          <EditIcon style={{ width: '12px', opacity: 0.6 }} />
-      </button>
-      {error && <Text tone="critical" variant="bodyXs">{error}</Text>}
-    </div>
+    <Button onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} icon={EditIcon} size="slim" variant="secondary">
+      {bin || "Set Bin"}
+    </Button>
   );
 }
