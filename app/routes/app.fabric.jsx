@@ -126,7 +126,6 @@ export default function FabricInventory() {
   const fetcher = useFetcher();
   const { mode, setMode } = useSetIndexFiltersMode();
 
-  const [selectedResources, setSelectedResources] = useState([]);
 
   const locationOptions = useMemo(() => {
     if (!locations || locations.length === 0) return [{ label: "No locations found", value: "" }];
@@ -225,7 +224,10 @@ export default function FabricInventory() {
     const available = matchingLevel?.node?.quantities?.find(q => q.name === "available")?.quantity || 0;
 
     return (
-      <IndexTable.Row id={id} key={id} position={index} selected={selectedResources.includes(id)}>
+      <IndexTable.Row id={id} key={id} position={index}>
+        <IndexTable.Cell>
+          <Text variant="bodyMd" fontWeight="bold">{index + 1}</Text>
+        </IndexTable.Cell>
         <IndexTable.Cell>
           <Thumbnail source={featuredImage?.url || ""} alt={title} size="small" />
         </IndexTable.Cell>
@@ -250,9 +252,16 @@ export default function FabricInventory() {
           </div>
         </IndexTable.Cell>
         <IndexTable.Cell>
-           <div style={{ textAlign: 'right' }}>
-              <Button icon={ArrowRightIcon} variant="plain" target="_blank" url={adminUrl} />
-           </div>
+            <div style={{ textAlign: 'right' }}>
+              <Button 
+                icon={ArrowRightIcon} 
+                variant="plain" 
+                external 
+                target="_blank" 
+                url={adminUrl} 
+                onClick={(e) => e.stopPropagation()} 
+              />
+            </div>
         </IndexTable.Cell>
       </IndexTable.Row>
     );
@@ -316,7 +325,9 @@ export default function FabricInventory() {
             <IndexTable
               resourceName={resourceName}
               itemCount={products.length}
+              selectable={false}
               headings={[
+                { title: 'No.' },
                 { title: 'Image' },
                 { title: 'Product Detail' },
                 { title: 'Stock Status' },
@@ -324,9 +335,6 @@ export default function FabricInventory() {
                 { title: 'Barcode Ref' },
                 { title: 'View', alignment: 'end' },
               ]}
-              selectedResources={selectedResources}
-              onSelectionChange={setSelectedResources}
-              bulkActions={[]}
               hasMoreItems={pageInfo?.hasNextPage}
               loading={isLoading}
             >
