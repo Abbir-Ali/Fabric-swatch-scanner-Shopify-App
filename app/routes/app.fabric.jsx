@@ -5,7 +5,7 @@ import {
   InlineStack, Thumbnail, Text, Pagination, Box, IndexFilters, TextField, Select, useSetIndexFiltersMode,
   Popover, Banner, Spinner
 } from "@shopify/polaris";
-import { ArrowRightIcon, EditIcon, CheckIcon, XIcon } from "@shopify/polaris-icons";
+import { ArrowRightIcon, EditIcon, CheckIcon, XIcon, ExportIcon } from "@shopify/polaris-icons";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getFabricInventory, getShopLocations } from "../services/order.server";
 import { adjustInventory, setInventory } from "../services/inventory.server";
@@ -135,7 +135,8 @@ export const action = async ({ request }) => {
  * Main page component.
  */
 export default function FabricInventory() {
-  const { products, pageInfo, page, shopDomain, locations, currentLocationId, initialQuery, initialSort, initialReverse } = useLoaderData();
+  const { products: rawProducts, pageInfo, page, shopDomain, locations, currentLocationId, initialQuery, initialSort, initialReverse } = useLoaderData();
+  const products = rawProducts || [];
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const navigation = useNavigation();
@@ -221,6 +222,85 @@ export default function FabricInventory() {
     navigate(`?${params.toString()}`);
   };
 
+  const handlePrint = (barcode, title, sku) => {
+    const printWindow = window.open('', '_blank', 'width=600,height=400');
+    
+    if (!printWindow) {
+      alert("Please allow popups to print barcodes.");
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Print Barcode - ${barcode}</title>
+          <style>
+            @page {
+              size: 58mm 30mm;
+              margin: 0;
+            }
+            html, body {
+              width: 58mm;
+              height: 30mm;
+              margin: 0;
+              padding: 0;
+              overflow: hidden;
+            }
+            body {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-family: monospace;
+              box-sizing: border-box;
+            }
+            .barcode-container {
+              width: 100%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 2mm;
+              box-sizing: border-box;
+            }
+            svg {
+              max-width: 54mm;
+              max-height: 26mm;
+              height: auto;
+            }
+          </style>
+          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+        </head>
+        <body>
+          <div class="barcode-container">
+            <svg id="barcode"></svg>
+          </div>
+          <script>
+            window.onload = function() {
+              if (window.JsBarcode) {
+                JsBarcode("#barcode", "${barcode}", {
+                  format: "CODE128",
+                  width: 2,
+                  height: 60,
+                  displayValue: true,
+                  fontSize: 14,
+                  margin: 0
+                });
+                setTimeout(() => {
+                  window.print();
+                  window.close();
+                }, 600);
+              }
+            };
+          <\/script>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
 
   const resourceName = { singular: 'product', plural: 'products' };
   const isLoading = navigation.state === "loading" || fetcher.state !== "idle";
@@ -263,8 +343,22 @@ export default function FabricInventory() {
           <BinEditor productId={id} initialBin={binMeta?.value || ""} />
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <div style={{ transform: 'scale(0.7)', transformOrigin: 'left', opacity: barcode ? 1 : 0.4, minWidth: '100px', height: '40px' }}>
-             <BarcodeImage value={barcode} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ transform: 'scale(0.6)', transformOrigin: 'left', opacity: barcode ? 1 : 0.4, minWidth: '80px', height: '35px' }}>
+               <BarcodeImage value={barcode} />
+            </div>
+            {barcode && (
+              <Button 
+                icon={ExportIcon} 
+                variant="plain" 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  handlePrint(barcode, title, sku); 
+                }} 
+                size="slim"
+                accessibilityLabel="Print Label"
+              />
+            )}
           </div>
         </IndexTable.Cell>
         <IndexTable.Cell>
