@@ -21,5 +21,5 @@ export default function BarcodeImage({ value }) {
     }
   }, [value]);
 
-  return value ? <svg ref={barcodeRef}></svg> : <div style={{color: 'red'}}>No Barcode</div>;
+  return value ? <svg ref={barcodeRef} style={{ height: '40px', maxWidth: '100%' }}></svg> : <div style={{color: 'red'}}>No Barcode</div>;
 }

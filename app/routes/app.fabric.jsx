@@ -247,7 +247,7 @@ export default function FabricInventory() {
           <BinEditor productId={id} initialBin={binMeta?.value || ""} />
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <div style={{ zoom: 0.7, opacity: barcode ? 1 : 0.4 }}>
+          <div style={{ transform: 'scale(0.7)', transformOrigin: 'left', opacity: barcode ? 1 : 0.4, minWidth: '100px', height: '40px' }}>
              <BarcodeImage value={barcode} />
           </div>
         </IndexTable.Cell>
@@ -304,6 +304,7 @@ export default function FabricInventory() {
         
         <Layout.Section>
           <Card padding="0">
+            <Box minHeight="400px">
             <IndexFilters
               sortOptions={sortOptions}
               sortSelected={sortSelected}
@@ -350,6 +351,7 @@ export default function FabricInventory() {
                       onNext={() => handlePagination(pageInfo.endCursor, "next")}
                   />
                </div>
+            </Box>
             </Box>
           </Card>
         </Layout.Section>
