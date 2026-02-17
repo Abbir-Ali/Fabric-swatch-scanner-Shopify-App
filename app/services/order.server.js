@@ -72,7 +72,7 @@ export async function getFabricOrders(admin, cursor = null, direction = "next") 
             }
           }
         }`,
-      { variables: { query: "fulfillment_status:unfulfilled AND tag:swatch-only" } }
+      { variables: { query: "(fulfillment_status:unfulfilled OR fulfillment_status:partial) AND tag:swatch-only" } }
     );
     const responseJson = await response.json();
     return {
