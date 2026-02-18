@@ -358,3 +358,111 @@ export async function getShopLocations(admin) {
     return [];
   }
 }
+
+export async function getAllFabricInventory(admin) {
+  let allProducts = [];
+  let hasNextPage = true;
+  let cursor = null;
+
+  try {
+    while (hasNextPage) {
+      const response = await admin.graphql(
+        `#graphql
+        query getAllInventory($cursor: String) {
+          products(first: 50, after: $cursor, query: "product_type:'Swatch Item'") {
+            pageInfo { hasNextPage endCursor }
+            edges {
+              node {
+                title
+                variants(first: 1) {
+                  edges {
+                    node {
+                      sku
+                      barcode
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        { variables: { cursor } }
+      );
+
+      const resJson = await response.json();
+      const products = resJson.data?.products?.edges || [];
+      allProducts = allProducts.concat(products.map(p => ({
+        title: p.node.title,
+        sku: p.node.variants.edges[0]?.node?.sku || "N/A",
+        barcode: p.node.variants.edges[0]?.node?.barcode || ""
+      })));
+
+      hasNextPage = resJson.data?.products?.pageInfo.hasNextPage;
+      cursor = resJson.data?.products?.pageInfo.endCursor;
+    }
+    return allProducts;
+  } catch (error) {
+    console.error("GetAllInventory Error:", error);
+    return [];
+  }
+}
+
+export async function getGlobalInventoryStats(admin, locationId) {
+  let stats = { total: 0, lowStock: 0, outOfStock: 0 };
+  let hasNextPage = true;
+  let cursor = null;
+
+  try {
+    while (hasNextPage) {
+      const response = await admin.graphql(
+        `#graphql
+        query getGlobalStats($cursor: String) {
+          products(first: 100, after: $cursor, query: "product_type:'Swatch Item'") {
+            pageInfo { hasNextPage endCursor }
+            edges {
+              node {
+                variants(first: 1) {
+                  edges {
+                    node {
+                      inventoryItem {
+                        inventoryLevel(locationId: "${locationId}") {
+                          quantities(names: ["available"]) {
+                            quantity
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        { variables: { cursor } }
+      );
+
+      const resJson = await response.json();
+      if (resJson.errors) {
+        console.error("[GLOBAL STATS] GraphQL Errors:", JSON.stringify(resJson.errors, null, 2));
+        break;
+      }
+
+      const products = resJson.data?.products?.edges || [];
+      products.forEach(p => {
+        const variant = p.node.variants.edges[0]?.node;
+        const available = variant?.inventoryItem?.inventoryLevel?.quantities[0]?.quantity || 0;
+        
+        stats.total++;
+        if (available <= 0) stats.outOfStock++;
+        else if (available < 10) stats.lowStock++;
+      });
+
+      hasNextPage = resJson.data?.products?.pageInfo.hasNextPage;
+      cursor = resJson.data?.products?.pageInfo.endCursor;
+    }
+    return stats;
+  } catch (error) {
+    console.error("GetGlobalInventoryStats Error:", error);
+    return stats;
+  }
+}

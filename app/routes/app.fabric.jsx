@@ -3,11 +3,11 @@ import { authenticate } from "../shopify.server";
 import { 
   Page, Layout, Card, IndexTable, Button, BlockStack, Badge, 
   InlineStack, Thumbnail, Text, Pagination, Box, IndexFilters, TextField, Select, useSetIndexFiltersMode,
-  Popover, Banner, Spinner
+  Popover, Banner, Spinner, Grid
 } from "@shopify/polaris";
 import { ArrowRightIcon, EditIcon, CheckIcon, XIcon, ExportIcon } from "@shopify/polaris-icons";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { getFabricInventory, getShopLocations } from "../services/order.server";
+import { getFabricInventory, getShopLocations, getAllFabricInventory, getGlobalInventoryStats } from "../services/order.server";
 import { adjustInventory, setInventory } from "../services/inventory.server";
 
 import BarcodeImage from "../components/BarcodeImage";
@@ -35,6 +35,8 @@ export const loader = async ({ request }) => {
     query, sortKey, reverse, direction, locationId 
   });
   
+  const globalStats = await getGlobalInventoryStats(admin, locationId);
+  
   const shopDomain = session.shop.replace(".myshopify.com", "");
 
   return {
@@ -46,7 +48,8 @@ export const loader = async ({ request }) => {
     currentLocationId: locationId,
     initialQuery: query,
     initialSort: sortKey,
-    initialReverse: reverse
+    initialReverse: reverse,
+    globalStats
   };
 };
 
@@ -127,6 +130,15 @@ export const action = async ({ request }) => {
   }
 
 
+  if (actionType === "exportAllBarcodes") {
+    try {
+      const allBarcodes = await getAllFabricInventory(admin);
+      return { success: true, allBarcodes };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
   return { success: false, error: "Invalid action type" };
 };
 
@@ -135,13 +147,15 @@ export const action = async ({ request }) => {
  * Main page component.
  */
 export default function FabricInventory() {
-  const { products: rawProducts, pageInfo, page, shopDomain, locations, currentLocationId, initialQuery, initialSort, initialReverse } = useLoaderData();
+  const { products: rawProducts, pageInfo, page, shopDomain, locations, currentLocationId, initialQuery, initialSort, initialReverse, globalStats: initialGlobalStats } = useLoaderData();
   const products = rawProducts || [];
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const navigation = useNavigation();
   const fetcher = useFetcher();
   const { mode, setMode } = useSetIndexFiltersMode();
+
+  const stats = initialGlobalStats || { total: 0, lowStock: 0, outOfStock: 0 };
 
 
   const locationOptions = useMemo(() => {
@@ -150,15 +164,15 @@ export default function FabricInventory() {
   }, [locations]);
 
   const sortOptions = [
-    { label: 'Newest first', value: 'CREATED_AT:true' },
-    { label: 'Oldest first', value: 'CREATED_AT:false' },
-    { label: 'Alphabetical (A-Z)', value: 'TITLE:false' },
-    { label: 'Alphabetical (Z-A)', value: 'TITLE:true' },
-    { label: 'Stock (Low to High)', value: 'INVENTORY_TOTAL:false' },
-    { label: 'Stock (High to Low)', value: 'INVENTORY_TOTAL:true' },
+    { label: 'Date', value: 'CREATED_AT desc', directionLabel: 'Newest first' },
+    { label: 'Date', value: 'CREATED_AT asc', directionLabel: 'Oldest first' },
+    { label: 'Title', value: 'TITLE asc', directionLabel: 'A-Z' },
+    { label: 'Title', value: 'TITLE desc', directionLabel: 'Z-A' },
+    { label: 'Stock', value: 'INVENTORY_TOTAL asc', directionLabel: 'Low to High' },
+    { label: 'Stock', value: 'INVENTORY_TOTAL desc', directionLabel: 'High to Low' },
   ];
 
-  const [sortSelected, setSortSelected] = useState([`${initialSort}:${initialReverse}`]);
+  const [sortSelected, setSortSelected] = useState([`${initialSort} ${initialReverse ? 'desc' : 'asc'}`]);
   const [queryValue, setQueryValue] = useState(initialQuery || "");
 
   useEffect(() => {
@@ -195,11 +209,18 @@ export default function FabricInventory() {
   }, [searchParams, navigate]);
 
   const handleSortChange = useCallback((value) => {
+    if (!value || value.length === 0 || !value[0]) return;
+    
     setSortSelected(value);
-    const [key, rev] = value[0].split(":");
+    const splitVal = value[0].split(" ");
+    if (splitVal.length < 2) return;
+
+    const [key, direction] = splitVal;
+    const rev = direction === "desc";
+    
     const params = new URLSearchParams(searchParams);
     params.set("sortKey", key);
-    params.set("reverse", rev);
+    params.set("reverse", rev ? "true" : "false");
     params.delete("cursor");
     params.delete("direction");
     params.set("page", "1");
@@ -301,6 +322,107 @@ export default function FabricInventory() {
     printWindow.document.close();
   };
 
+  const handleBulkPrint = (barcodes) => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    if (!printWindow) {
+      alert("Please allow popups to print barcodes.");
+      return;
+    }
+
+    const labelsHtml = barcodes.map((item, idx) => `
+      <div class="label-page">
+        <div class="barcode-container">
+          <svg id="barcode-${idx}"></svg>
+        </div>
+      </div>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Bulk Print Barcodes</title>
+          <style>
+            @page {
+              size: 58mm 30mm;
+              margin: 0;
+            }
+            html, body {
+              margin: 0;
+              padding: 0;
+            }
+            .label-page {
+              width: 58mm;
+              height: 30mm;
+              page-break-after: always;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+              box-sizing: border-box;
+            }
+            .barcode-container {
+              width: 100%;
+              height: 100%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 2mm;
+              box-sizing: border-box;
+            }
+            svg {
+              max-width: 54mm;
+              max-height: 26mm;
+              height: auto;
+            }
+          </style>
+          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
+        </head>
+        <body>
+          ${labelsHtml}
+          <script>
+            window.onload = function() {
+              if (window.JsBarcode) {
+                const barcodesData = ${JSON.stringify(barcodes)};
+                barcodesData.forEach((item, idx) => {
+                  if (item.barcode) {
+                    JsBarcode("#barcode-" + idx, item.barcode, {
+                      format: "CODE128",
+                      width: 2,
+                      height: 60,
+                      displayValue: true,
+                      fontSize: 14,
+                      margin: 0
+                    });
+                  }
+                });
+                setTimeout(() => {
+                  window.print();
+                  window.close();
+                }, 1000);
+              }
+            };
+          <\/script>
+        </body>
+      </html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  useEffect(() => {
+    if (fetcher.data?.allBarcodes) {
+      const barcodesToPrint = fetcher.data.allBarcodes.filter(b => b.barcode);
+      if (barcodesToPrint.length === 0) {
+        alert("No barcodes found to export.");
+      } else {
+        handleBulkPrint(barcodesToPrint);
+      }
+    }
+  }, [fetcher.data]);
+
 
   const resourceName = { singular: 'product', plural: 'products' };
   const isLoading = navigation.state === "loading" || fetcher.state !== "idle";
@@ -322,20 +444,41 @@ export default function FabricInventory() {
     return (
       <IndexTable.Row id={id} key={id} position={index}>
         <IndexTable.Cell>
-          <Text variant="bodyMd" fontWeight="bold">{index + 1}</Text>
+          <Box paddingInlineStart="300">
+            <Text variant="bodySm" tone="subdued" fontWeight="bold">#{index + 1}</Text>
+          </Box>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <Thumbnail source={featuredImage?.url || ""} alt={title} size="small" />
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <div style={{ maxWidth: '250px' }}>
-            <Text variant="bodyMd" fontWeight="bold" breakWord>{title}</Text>
-            <Text variant="bodyXs" tone="subdued">SKU: {sku}</Text>
+          <div style={{ padding: '8px 0' }}>
+            <Thumbnail source={featuredImage?.url || ""} alt={title} size="large" />
           </div>
         </IndexTable.Cell>
         <IndexTable.Cell>
-           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Badge tone={available > 0 ? "success" : "critical"}>{available} available</Badge>
+          <div style={{ padding: '12px 0' }}>
+            <BlockStack gap="100">
+                <Text variant="bodyMd" fontWeight="bold" breakWord>{title}</Text>
+                <InlineStack gap="200">
+                  <Badge tone="info" size="small">SKU: {sku}</Badge>
+                   <Button 
+                    icon={ArrowRightIcon} 
+                    variant="plain" 
+                    external 
+                    target="_blank" 
+                    url={adminUrl} 
+                    size="micro"
+                    onClick={(e) => e.stopPropagation()} 
+                  >
+                    View in Admin
+                  </Button>
+                </InlineStack>
+            </BlockStack>
+          </div>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Badge tone={available > 10 ? "success" : available > 0 ? "warning" : "critical"}>
+                {available} {available === 1 ? 'unit' : 'units'}
+              </Badge>
               <InventoryAdjuster inventoryItemId={inventoryItemId} locationId={currentLocationId} />
            </div>
         </IndexTable.Cell>
@@ -343,14 +486,24 @@ export default function FabricInventory() {
           <BinEditor productId={id} initialBin={binMeta?.value || ""} />
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ transform: 'scale(0.6)', transformOrigin: 'left', opacity: barcode ? 1 : 0.4, minWidth: '80px', height: '35px' }}>
-               <BarcodeImage value={barcode} />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Box 
+              padding="100" 
+              background="bg-surface-secondary" 
+              borderRadius="200" 
+              borderWidth="025" 
+              borderColor="border" 
+              minWidth="100px"
+              style={{ display: 'flex', justifyContent: 'center' }}
+            >
+              <div style={{ transform: 'scale(0.7)', transformOrigin: 'center', opacity: barcode ? 1 : 0.4, height: '35px' }}>
+                 <BarcodeImage value={barcode} />
+              </div>
+            </Box>
             {barcode && (
               <Button 
                 icon={ExportIcon} 
-                variant="plain" 
+                variant="secondary" 
                 onClick={(e) => { 
                   e.stopPropagation(); 
                   handlePrint(barcode, title, sku); 
@@ -361,24 +514,21 @@ export default function FabricInventory() {
             )}
           </div>
         </IndexTable.Cell>
-        <IndexTable.Cell>
-            <div style={{ textAlign: 'right' }}>
-              <Button 
-                icon={ArrowRightIcon} 
-                variant="plain" 
-                external 
-                target="_blank" 
-                url={adminUrl} 
-                onClick={(e) => e.stopPropagation()} 
-              />
-            </div>
-        </IndexTable.Cell>
       </IndexTable.Row>
     );
   });
 
   return (
-    <Page title="Swatch Item Inventory" fullWidth>
+    <Page 
+      title="Swatch Item Inventory" 
+      fullWidth
+      primaryAction={{
+        content: 'Bulk Export Barcodes',
+        icon: ExportIcon,
+        onAction: () => fetcher.submit({ actionType: "exportAllBarcodes" }, { method: "post" }),
+        loading: fetcher.state === "submitting" && fetcher.formData?.get("actionType") === "exportAllBarcodes"
+      }}
+    >
       <Layout>
         {fetcher.data?.message && (
           <Layout.Section>
@@ -397,19 +547,48 @@ export default function FabricInventory() {
         )}
 
         <Layout.Section>
-           <Card>
-              <InlineStack align="space-between" blockAlign="center">
-                <Box minWidth="300px">
-                   <Select
-                      label="Select Warehouse / Location"
-                      options={locationOptions}
-                      onChange={handleLocationChange}
-                      value={currentLocationId}
-                   />
-                </Box>
-                <Text tone="subdued">Inventory actions will apply to the selected location.</Text>
-              </InlineStack>
-           </Card>
+          <Grid columns={{xs: 1, sm: 1, md: 3, lg: 3, xl: 3}} gap={{xs: '400', md: '400'}}>
+            <Grid.Cell columnSpan={{xs: 1, sm: 1, md: 2, lg: 2, xl: 2}}>
+                <Card>
+                  <BlockStack gap="400">
+                    <Text variant="headingSm" as="h2">Inventory Summary</Text>
+                    <InlineStack gap="1000" align="start">
+                    <BlockStack gap="100">
+                      <Text variant="bodyXs" tone="subdued" fontWeight="medium">TOTAL ITEMS</Text>
+                      <Text variant="headingLg" as="p">{stats.total}</Text>
+                    </BlockStack>
+                    <div style={{ width: '1px', background: 'var(--p-color-border-subdued)', height: '40px' }} />
+                    <BlockStack gap="100">
+                      <Text variant="bodyXs" tone="subdued" fontWeight="medium">LOW STOCK</Text>
+                      <Text variant="headingLg" as="p" tone="warning">{stats.lowStock}</Text>
+                    </BlockStack>
+                    <div style={{ width: '1px', background: 'var(--p-color-border-subdued)', height: '40px' }} />
+                    <BlockStack gap="100">
+                      <Text variant="bodyXs" tone="subdued" fontWeight="medium">OUT OF STOCK</Text>
+                      <Text variant="headingLg" as="p" tone="critical">{stats.outOfStock}</Text>
+                    </BlockStack>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+            </Grid.Cell>
+            <Grid.Cell columnSpan={{xs: 1, sm: 1, md: 1, lg: 1, xl: 1}}>
+              <Card height="100%">
+                <BlockStack gap="400">
+                  <Text variant="headingSm" as="h2">Stock Location</Text>
+                  <BlockStack gap="200">
+                    <Select
+                        label="Select Warehouse / Location"
+                        labelHidden
+                        options={locationOptions}
+                        onChange={handleLocationChange}
+                        value={currentLocationId}
+                    />
+                    <Text variant="bodyXs" tone="subdued">Inventory actions will update the selected warehouse.</Text>
+                  </BlockStack>
+                </BlockStack>
+              </Card>
+            </Grid.Cell>
+          </Grid>
         </Layout.Section>
         
         <Layout.Section>
@@ -430,7 +609,7 @@ export default function FabricInventory() {
               loading={isLoading}
               filters={[]}
               canCreateNewView={false}
-              queryPlaceholder="Search products..."
+              queryPlaceholder="Search products or bin..."
             />
             
             <IndexTable
@@ -443,8 +622,7 @@ export default function FabricInventory() {
                 { title: 'Product Detail' },
                 { title: 'Stock Status' },
                 { title: 'Bin Location' },
-                { title: 'Barcode Ref' },
-                { title: 'View', alignment: 'end' },
+                { title: 'Barcode Reference' },
               ]}
               hasMoreItems={pageInfo?.hasNextPage}
               loading={isLoading}
@@ -452,7 +630,7 @@ export default function FabricInventory() {
               {rowMarkup}
             </IndexTable>
             
-            <Box padding="400">
+            <Box padding="400" borderTopWidth="025" borderColor="border">
                <div style={{ display: 'flex', justifyContent: 'center' }}>
                   <Pagination
                       hasPrevious={pageInfo?.hasPreviousPage}
@@ -579,8 +757,18 @@ function BinEditor({ productId, initialBin }) {
   }
 
   return (
-    <Button onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} icon={EditIcon} size="slim" variant="secondary">
-      {bin || "Set Bin"}
+    <Button 
+      onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} 
+      icon={EditIcon} 
+      size="slim" 
+      variant="secondary"
+      tone={bin ? undefined : "caution"}
+    >
+      {bin ? (
+        <InlineStack gap="100">
+          <Text variant="bodyMd" fontWeight="bold">{bin}</Text>
+        </InlineStack>
+      ) : "Assign Bin"}
     </Button>
   );
 }
