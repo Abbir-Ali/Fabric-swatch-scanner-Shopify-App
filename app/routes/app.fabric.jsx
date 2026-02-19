@@ -162,7 +162,7 @@ export default function FabricInventory() {
     if (!locations || locations.length === 0) return [{ label: "No locations found", value: "" }];
     return locations.map(loc => ({ label: loc.name, value: loc.id }));
   }, [locations]);
-
+  // sort options
   const sortOptions = [
     { label: 'Date', value: 'CREATED_AT desc', directionLabel: 'Newest first' },
     { label: 'Date', value: 'CREATED_AT asc', directionLabel: 'Oldest first' },
