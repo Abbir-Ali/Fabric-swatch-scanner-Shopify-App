@@ -11,7 +11,7 @@ export default function BarcodeImage({ value }) {
           format: "CODE128",
           width: 1.2,
           height: 40,
-          displayValue: true,
+          displayValue: false,
           fontSize: 10,
           margin: 0
         });

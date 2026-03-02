@@ -243,7 +243,7 @@ export default function FabricInventory() {
     navigate(`?${params.toString()}`);
   };
 
-  const handlePrint = (barcode, title, sku) => {
+  const handlePrint = (barcode, title, sku, binNumber) => {
     const printWindow = window.open('', '_blank', 'width=600,height=400');
     
     if (!printWindow) {
@@ -270,29 +270,41 @@ export default function FabricInventory() {
             }
             body {
               display: flex;
+              flex-direction: column;
               align-items: center;
-              justify-content: center;
+              justify-content: flex-start;
               font-family: monospace;
               box-sizing: border-box;
+              padding-top: 2mm;
+            }
+            .header {
+              width: 100%;
+              text-align: center;
+              font-size: 14px;
+              font-weight: bold;
+              margin-bottom: 2mm;
             }
             .barcode-container {
               width: 100%;
-              height: 100%;
+              flex: 1;
               display: flex;
               align-items: center;
               justify-content: center;
-              padding: 2mm;
+              padding: 0 2mm;
               box-sizing: border-box;
             }
             svg {
               max-width: 54mm;
-              max-height: 26mm;
+              max-height: 18mm;
               height: auto;
             }
           </style>
           <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"><\/script>
         </head>
         <body>
+          <div class="header">
+            Bin: ${binNumber || "N/A"}
+          </div>
           <div class="barcode-container">
             <svg id="barcode"></svg>
           </div>
@@ -302,8 +314,8 @@ export default function FabricInventory() {
                 JsBarcode("#barcode", "${barcode}", {
                   format: "CODE128",
                   width: 2,
-                  height: 60,
-                  displayValue: true,
+                  height: 50,
+                  displayValue: false,
                   fontSize: 14,
                   margin: 0
                 });
@@ -332,6 +344,9 @@ export default function FabricInventory() {
 
     const labelsHtml = barcodes.map((item, idx) => `
       <div class="label-page">
+        <div class="header">
+          Bin: ${item.binNumber || "N/A"}
+        </div>
         <div class="barcode-container">
           <svg id="barcode-${idx}"></svg>
         </div>
@@ -351,29 +366,39 @@ export default function FabricInventory() {
             html, body {
               margin: 0;
               padding: 0;
+              font-family: monospace;
             }
             .label-page {
               width: 58mm;
               height: 30mm;
               page-break-after: always;
               display: flex;
+              flex-direction: column;
               align-items: center;
-              justify-content: center;
+              justify-content: flex-start;
               overflow: hidden;
               box-sizing: border-box;
+              padding-top: 2mm;
+            }
+            .header {
+              width: 100%;
+              text-align: center;
+              font-size: 14px;
+              font-weight: bold;
+              margin-bottom: 2mm;
             }
             .barcode-container {
               width: 100%;
-              height: 100%;
+              flex: 1;
               display: flex;
               align-items: center;
               justify-content: center;
-              padding: 2mm;
+              padding: 0 2mm;
               box-sizing: border-box;
             }
             svg {
               max-width: 54mm;
-              max-height: 26mm;
+              max-height: 18mm;
               height: auto;
             }
           </style>
@@ -390,8 +415,8 @@ export default function FabricInventory() {
                     JsBarcode("#barcode-" + idx, item.barcode, {
                       format: "CODE128",
                       width: 2,
-                      height: 60,
-                      displayValue: true,
+                      height: 50,
+                      displayValue: false,
                       fontSize: 14,
                       margin: 0
                     });
@@ -506,7 +531,7 @@ export default function FabricInventory() {
                 variant="secondary" 
                 onClick={(e) => { 
                   e.stopPropagation(); 
-                  handlePrint(barcode, title, sku); 
+                  handlePrint(barcode, title, sku, binMeta?.value || ""); 
                 }} 
                 size="slim"
                 accessibilityLabel="Print Label"

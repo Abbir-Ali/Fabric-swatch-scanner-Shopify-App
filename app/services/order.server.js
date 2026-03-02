@@ -374,6 +374,15 @@ export async function getAllFabricInventory(admin) {
             edges {
               node {
                 title
+                metafields(first: 10) {
+                  edges {
+                    node {
+                      namespace
+                      key
+                      value
+                    }
+                  }
+                }
                 variants(first: 1) {
                   edges {
                     node {
@@ -391,11 +400,15 @@ export async function getAllFabricInventory(admin) {
 
       const resJson = await response.json();
       const products = resJson.data?.products?.edges || [];
-      allProducts = allProducts.concat(products.map(p => ({
-        title: p.node.title,
-        sku: p.node.variants.edges[0]?.node?.sku || "N/A",
-        barcode: p.node.variants.edges[0]?.node?.barcode || ""
-      })));
+      allProducts = allProducts.concat(products.map(p => {
+        const binMeta = p.node.metafields.edges.find(e => e.node.key === "bin_number")?.node;
+        return {
+          title: p.node.title,
+          sku: p.node.variants.edges[0]?.node?.sku || "N/A",
+          barcode: p.node.variants.edges[0]?.node?.barcode || "",
+          binNumber: binMeta?.value || ""
+        };
+      }));
 
       hasNextPage = resJson.data?.products?.pageInfo.hasNextPage;
       cursor = resJson.data?.products?.pageInfo.endCursor;
